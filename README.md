@@ -12,6 +12,7 @@ Date: 9/17/25
 
 ----------------------------------------------------------------------
 <ins>Project Overview</ins>
+
 What We're Building:
 
 A computer program to collect, organize, and analyze NFL player statistics. The tool will gather data from multiple sources (APIs, CSVs, databases), process and categorize it, and let users explore results through queries and visualizations.
@@ -46,6 +47,7 @@ What the Program Should Be Able to Tell Us:
 - How many rushing TDs did Derrick Henry score in the last three years?
 ----------------------------------------------------------------------
 <ins>Project Success Criteria</ins>
+
 We’ll know it’s a success if:
 - The tool can pull and store NFL stats from at least two sources.
 - Users can query the data and get correct answers fast. 
@@ -53,6 +55,7 @@ We’ll know it’s a success if:
 - Every query and result can be traced back to its source.
 ----------------------------------------------------------------------
 <ins>Learning Objectives</ins>
+
 What We'll Learn While Building It:
 - How to fetch and clean data from APIs and CSVs. 
 - How to design classes/objects to model players, teams, and stats.
