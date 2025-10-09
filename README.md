@@ -11,7 +11,7 @@ Team Members: Dash R, David L, Andrew C
 Date: 9/17/25
 
 ----------------------------------------------------------------------
-Project Overview
+Project Overview:
 What We're Building
 
 A computer program to collect, organize, and analyze NFL player statistics. The tool will gather data from multiple sources (APIs, CSVs, databases), process and categorize it, and let users explore results through queries and visualizations.
