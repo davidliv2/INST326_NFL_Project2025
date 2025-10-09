@@ -40,6 +40,7 @@ Track NFL Player Stats:
 - Create leaderboards, line charts, and player comparison graphs.
 ----------------------------------------------------------------------
 <ins>Expected Outcomes</ins>
+
 What the Program Should Be Able to Tell Us:
 - Who are the top QBs by passing yards this season? 
 - Which WRs have more than 1,000 receiving yards?
