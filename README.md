@@ -1,4 +1,4 @@
-# INST326_NFL_Project2025
+# INST326: NFL Project Fall 2025
 
 Course: INST326: Object-Oriented Programming for Information Science
 
