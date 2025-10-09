@@ -1,9 +1,13 @@
 # INST326_NFL_Project2025
 
 Course: INST326: Object-Oriented Programming for Information Science
+
 Section: 0301
+
 Team: Information Retrieval and Analysis Tool
+
 Team Members: Dash R, David L, Andrew C
+
 Date: 9/17/25
 
 ----------------------------------------------------------------------
