@@ -17,6 +17,25 @@ Course: INST326 - Object-Oriented Programming for Information Science
 # - Clean and normalize player names
 # - Safe math functions (avoid divide-by-zero errors)
 
+valid_teams = {"KC", "BAL", "PHI", "BUF", "DET", "DAL", "SF", "MIA", "GB"}
+valid_positions = {"QB", "RB", "WR", "TE", "LB", "S", "CB"}
+
+def validate_team(team):
+    # Returns true if the team abbreviation is valid
+    return team in valid_teams
+
+def validate_position(pos):
+    # Returns true if the position is valid
+    return pos in valid_positions
+
+def clean_name(name):
+    # Cleans player name (strip spaces, title case)
+    return name.strip().title()
+
+def safe_math(a, b):
+    # Avoid dividing by 0, returns 0 if denominator is 0
+    return a / b if b != 0 else 0
+
 
 # ==========================================
 # 2. Data Loading, Merging, and Canonicalization
@@ -35,6 +54,12 @@ Course: INST326 - Object-Oriented Programming for Information Science
 # - Create leaderboards (top players by stat)
 # - Compare players and analyze performance trends
 # - Predict or estimate future stats (optional)
+
+def qb_rating():
+
+def create_leaderboard():
+
+def compare_players():
 
 
 # ========================
