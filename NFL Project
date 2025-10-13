@@ -17,24 +17,42 @@ Course: INST326 - Object-Oriented Programming for Information Science
 # - Clean and normalize player names
 # - Safe math functions (avoid divide-by-zero errors)
 
-valid_teams = {"KC", "BAL", "PHI", "BUF", "DET", "DAL", "SF", "MIA", "GB"}
-valid_positions = {"QB", "RB", "WR", "TE", "LB", "S", "CB"}
+# ===========================
+# 1) Validation / Simple Helpers (API version)
+# ===========================
 
-def validate_team(team):
-    # Returns true if the team abbreviation is valid
-    return team in valid_teams
+VALID_TEAMS = {
+    "ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE",
+    "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAX", "KC",
+    "LV", "LAC", "LAR", "MIA", "MIN", "NE", "NO", "NYG",
+    "NYJ", "PHI", "PIT", "SEA", "SF", "TB", "TEN", "WAS"
+}
 
-def validate_position(pos):
-    # Returns true if the position is valid
-    return pos in valid_positions
+VALID_POSITIONS = {
+    "QB", "RB", "WR", "TE", "FB", "OL", "DL", "LB", "CB", "S", "K", "P"
+}
 
-def clean_name(name):
-    # Cleans player name (strip spaces, title case)
-    return name.strip().title()
+def clean_name(name: str) -> str:
+    """Fix player name formatting (strip spaces, title case)."""
+    if not isinstance(name, str):
+        return ""
+    return " ".join(name.strip().split()).title()
 
-def safe_math(a, b):
-    # Avoid dividing by 0, returns 0 if denominator is 0
-    return a / b if b != 0 else 0
+def safe_divide(a: float, b: float, default: float = 0.0) -> float:
+    """Divide safely; return default if b == 0."""
+    try:
+        return a / b if b != 0 else default
+    except Exception:
+        return default
+
+def validate_team(team: str) -> bool:
+    """Return True if the team is a valid NFL abbreviation."""
+    return isinstance(team, str) and team.upper() in VALID_TEAMS
+
+def validate_position(pos: str) -> bool:
+    """Return True if the position is valid."""
+    return isinstance(pos, str) and pos.upper() in VALID_POSITIONS
+
 
 
 # ==========================================
@@ -44,7 +62,53 @@ def safe_math(a, b):
 # - Load CSV or API data
 # - Merge different tables (like weekly stats + player info)
 # - Rename and organize columns for consistency
+from __future__ import annotations
+from typing import Dict, List, Optional
+import pandas as pd
+import requests
 
+
+def load_csv_data(path: str, dtype: Optional[Dict] = None) -> pd.DataFrame:
+    """Load a CSV into a DataFrame."""
+    df = pd.read_csv(path, dtype=dtype)
+    if df.empty:
+        raise ValueError(f"CSV is empty: {path}")
+    return df
+
+
+def fetch_api_data(url: str, params: Optional[Dict] = None, headers: Optional[Dict] = None, timeout: int = 20) -> dict | list:
+    """Fetch JSON data from an API."""
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=timeout)
+        if resp.status_code != 200:
+            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:150]}")
+        return resp.json()
+    except Exception as e:
+        raise RuntimeError(f"API request failed: {e}")
+
+
+def api_to_dataframe(data: dict | list, field_map: Optional[Dict[str, str]] = None, keep_extra: bool = False) -> pd.DataFrame:
+    """Convert API JSON into a DataFrame and rename keys if needed."""
+    if isinstance(data, dict):
+        rows = data.get("data", [data])
+    elif isinstance(data, list):
+        rows = data
+    else:
+        raise TypeError("API data must be dict or list")
+    
+    df = pd.DataFrame(rows)
+    if field_map:
+        df = df.rename(columns={k: v for k, v in field_map.items() if k in df.columns})
+        if not keep_extra:
+            df = df[[v for v in field_map.values() if v in df.columns]]
+    return df
+
+
+def merge_datasets(left: pd.DataFrame, right: pd.DataFrame, on: str | List[str], how: str = "left", dedupe_keys: Optional[List[str]] = None) -> pd.DataFrame:
+    """Merge two DataFrames."""
+    if dedupe_keys:
+        right = right.drop_duplicates(subset=dedupe_keys)
+    return left.merge(right, on=on, how=how)
 
 # =========================
 # 3. Calculations and Analysis
@@ -53,13 +117,121 @@ def safe_math(a, b):
 # - Calculate QB ratings and player efficiency
 # - Create leaderboards (top players by stat)
 # - Compare players and analyze performance trends
-# - Predict or estimate future stats (optional)
+# - Predict or estimate future stats 
 
-def qb_rating():
+from typing import List, Dict, Optional
+import pandas as pd
 
-def create_leaderboard():
+def qb_rating(att: int, comp: int, yds: int, td: int, ints: int) -> float:
+    """NFL passer rating (0.0–158.3). Short + safe."""
+    if att <= 0:
+        return 0.0
 
-def compare_players():
+    # tiny helper so the formula parts stay in [0, 2.375]
+    def clip(x: float) -> float:
+        return 0.0 if x < 0 else (2.375 if x > 2.375 else x)
+
+    a = clip(((comp / att) - 0.3) * 5)
+    b = clip(((yds / att) - 3) * 0.25)
+    c = clip((td / att) * 20)
+    d = clip(2.375 - ((ints / att) * 25))
+
+    return round(((a + b + c + d) / 6) * 100, 1)
+
+def efficiency(yards: float, plays: float, touchdowns: float = 0) -> Dict[str, float]:
+    """Super simple efficiency: yards/play and TD rate."""
+    ypp = yards / plays if plays else 0.0
+    td_rate = touchdowns / plays if plays else 0.0
+    return {"ypp": round(ypp, 3), "td_rate": round(td_rate, 4)}
+
+def create_leaderboard(
+    df: pd.DataFrame,
+    stat: str,
+    position: Optional[str] = None,
+    season: Optional[int] = None,
+    top_n: int = 10,
+) -> pd.DataFrame:
+    """Top-N players by a stat (sums rows first)."""
+    if not isinstance(df, pd.DataFrame) or "player" not in df.columns or stat not in df.columns:
+        return pd.DataFrame()
+
+    data = df.copy()
+
+    # quick filters if cols exist
+    if season is not None and "season" in data.columns:
+        data = data[data["season"] == season]
+    if position is not None and "position" in data.columns:
+        data = data[data["position"].str.upper() == position.upper()]
+
+    # sum per player so multiple games roll up
+    out = (
+        data.groupby("player", dropna=False)[stat]
+        .sum(numeric_only=True)
+        .reset_index()
+        .sort_values(stat, ascending=False)
+        .head(top_n)
+    )
+    out.insert(0, "rank", range(1, len(out) + 1))
+    return out[["rank", "player", stat]]
+
+
+def compare_players(
+    df: pd.DataFrame,
+    players: List[str],
+    stats: List[str],
+) -> Dict[str, Dict[str, float]]:
+    """Compare players across a few stats. Returns a simple dict."""
+    if not isinstance(df, pd.DataFrame) or "player" not in df.columns:
+        return {}
+
+    # light name normalizer so '  tua TAGOVAILOA ' matches fine
+    def _norm(s: str) -> str:
+        return " ".join(str(s).strip().split()).title()
+
+    wanted = {_norm(p) for p in players}
+    data = df.copy()
+    data["player_norm"] = data["player"].map(_norm)
+
+    # only keep requested players; fill missing stats with 0
+    keep_cols = ["player_norm"] + [s for s in stats if s in data.columns]
+    sub = data[keep_cols].copy()
+    agg = sub[sub["player_norm"].isin(wanted)].groupby("player_norm")[stats].sum(numeric_only=True)
+
+    result: Dict[str, Dict[str, float]] = {p: {s: 0.0 for s in stats} for p in wanted}
+    for name, row in agg.iterrows():
+        result[name] = {s: float(row.get(s, 0.0)) for s in stats}
+    return result
+
+
+def forecast_mean_last_n(
+    df: pd.DataFrame,
+    player: str,
+    stat: str,
+    n: int = 5,
+) -> Dict[str, float]:
+    """Baseline forecast = avg of last N games for that stat."""
+    if not isinstance(df, pd.DataFrame) or "player" not in df.columns or stat not in df.columns:
+        return {"player": player, "stat": stat, "n": 0.0, "forecast": 0.0}
+
+    def _norm(s: str) -> str:
+        return " ".join(str(s).strip().split()).title()
+
+    p = _norm(player)
+    data = df.copy()
+    data["player_norm"] = data["player"].map(_norm)
+
+    # sort per player by week if we have it; else by date if we have that
+    if "week" in data.columns:
+        data = data.sort_values(["player_norm", "week"])
+    elif "game_date" in data.columns:
+        data = data.sort_values(["player_norm", "game_date"])
+
+    recent = data[data["player_norm"] == p].dropna(subset=[stat]).tail(max(1, int(n)))
+    vals = recent[stat].tolist()
+    avg = (sum(vals) / len(vals)) if len(vals) else 0.0
+
+    return {"player": p, "stat": stat, "n": float(len(vals)), "forecast": round(avg, 2)}
+
 
 
 # ========================
@@ -68,11 +240,128 @@ def compare_players():
 # Functions to show and share results:
 # - Plot leaderboards or player comparisons using bar charts
 # - Export results to CSV files for reporting
+from typing import Optional
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def plot_leaderboard(
+    df: pd.DataFrame,
+    stat: str,
+    position: Optional[str] = None,
+    season: Optional[int] = None,
+    top_n: int = 10,
+    save_path: Optional[str] = None,
+    show: bool = True,
+) -> pd.DataFrame:
+    """Bar chart for top-N by a stat. Returns the table used for the plot."""
+    if not isinstance(df, pd.DataFrame) or "player" not in df.columns or stat not in df.columns:
+        print("plot_leaderboard: bad input")
+        return pd.DataFrame()
+
+    # reuse our analysis helper
+    lb = create_leaderboard(df, stat=stat, position=position, season=season, top_n=top_n)
+    if lb.empty:
+        print("plot_leaderboard: nothing to plot")
+        return lb
+
+    names = lb["player"].tolist()
+    values = lb[stat].tolist()
+
+    plt.figure(figsize=(9, 5))
+    # horizontal so long names fit
+    plt.barh(range(len(names))[::-1], values[::-1])
+    plt.yticks(range(len(names))[::-1], names[::-1])
+    title_bits = [f"Top {len(names)}", stat.replace("_", " ").title()]
+    if position: title_bits.append(f"({position.upper()})")
+    if season:   title_bits.append(str(season))
+    plt.title(" ".join(title_bits))
+    plt.xlabel(stat.replace("_", " ").title())
+    plt.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"saved: {save_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
+    return lb
+
+def plot_player_trend(
+    df: pd.DataFrame,
+    player: str,
+    stat: str,
+    save_path: Optional[str] = None,
+    show: bool = True,
+) -> pd.DataFrame:
+    """Line plot of a player's stat over time (by week if available)."""
+    if not isinstance(df, pd.DataFrame) or "player" not in df.columns or stat not in df.columns:
+        print("plot_player_trend: bad input")
+        return pd.DataFrame()
+
+    norm = lambda s: " ".join(str(s).strip().split()).title()
+    p = norm(player)
+    data = df.copy()
+    data["player_norm"] = data["player"].map(norm)
+    sub = data[data["player_norm"] == p].dropna(subset=[stat]).copy()
+    if sub.empty:
+        print("plot_player_trend: player not found or no data")
+        return sub
+
+    # pick an x-axis
+    if "week" in sub.columns:
+        sub = sub.sort_values("week")
+        x = sub["week"]
+        x_label = "Week"
+    elif "game_date" in sub.columns:
+        sub = sub.sort_values("game_date")
+        x = sub["game_date"]
+        x_label = "Game Date"
+    else:
+        sub = sub.reset_index(drop=True)
+        x = sub.index + 1
+        x_label = "Game #"
+
+    y = sub[stat]
+
+    plt.figure(figsize=(9, 4))
+    plt.plot(x, y, marker="o")
+    plt.title(f"{p} — {stat.replace('_', ' ').title()}")
+    plt.xlabel(x_label)
+    plt.ylabel(stat.replace("_", " ").title())
+    plt.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"saved: {save_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
+    return sub[[x_label] if isinstance(x_label, str) else "index"].assign(**{stat: y.values})
+
+def export_to_csv(df: pd.DataFrame, path: str) -> None:
+    """Save a DataFrame to CSV."""
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        print("export_to_csv: nothing to save")
+        return
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    df.to_csv(path, index=False)
+    print(f"saved: {path}")
+
+def export_to_json(df: pd.DataFrame, path: str, orient: str = "records") -> None:
+    """Save a DataFrame to JSON."""
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        print("export_to_json: nothing to save")
+        return
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    df.to_json(path, orient=orient)
+    print(f"saved: {path}")
 
 
-# =================
-# 5. Demo / Quick Test
-# =================
-# A short demo block to test the library:
-# - Print example outputs (like top 5 QBs)
-# - Verify each function works before submission
+
