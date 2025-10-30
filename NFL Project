@@ -7,7 +7,6 @@ It’s divided into clear sections so each part of the project stays organized.
 Team: Gridiron Data Systems (David, Dash, Andrew)
 Course: INST326 - Object-Oriented Programming for Information Science
 """
-
 # ===========================
 # 1. Validation / Simple Helpers
 # ===========================
@@ -363,5 +362,52 @@ def export_to_json(df: pd.DataFrame, path: str, orient: str = "records") -> None
     df.to_json(path, orient=orient)
     print(f"saved: {path}")
 
+# ===========================
+from__future__ import annotations
+from typing import Dict, List, Optional, Any
+import pandas as pd
+from datetime import datetime
+# ===========================
+# Class 1: Player
+# ===========================
+"""This will represent an NFL player with their basic information
 
+This class will encapsulate player identity, position, team affiliation, and provides methods for managing and
+analyzing player statistics.
+
+Attributes: 
+    player_id (str): Unique identifier for the player
+    name (str): Player's full name (cleaned and formatted)
+    position (str): Playing positions (QB, RB, WR, etc.)
+    team (str): Current Team abbreviation
+
+Example: 
+    player = Player("P001", "Patrick Mahomes", "QB", "KC")
+    print(player)
+    Patrick Mahomes (QB) - KC
+    player.is_quaterback()
+    True
+"""
+VALID_POSITIONS = {
+        "QB", "RB", "WR", "TE", "FB", "OL", "DL", "LB", "CB", "S", "K", "P"
+    }
+    
+    VALID_TEAMS = {
+        "ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE",
+        "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAX", "KC",
+        "LV", "LAC", "LAR", "MIA", "MIN", "NE", "NO", "NYG",
+        "NYJ", "PHI", "PIT", "SEA", "SF", "TB", "TEN", "WAS"
+    }
+
+def __init__(self, player_id: str, name: str, position: str, team: str):
+    """Initialize a Player Instance.
+
+    Args: player_id (str): Unique identifier for the player
+    name (str): Player's full name
+    position (str): Playing position (must be a valid NFL position)
+    team (str): Team abbreviation (must be a valid NFL Team)
+
+    Raises: 
+        ValueError: If any parameter is invalid or empty
+"""
 
