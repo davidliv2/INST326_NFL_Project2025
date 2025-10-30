@@ -368,8 +368,11 @@ from typing import Dict, List, Optional, Any
 import pandas as pd
 from datetime import datetime
 # ===========================
+
+# ===========================
 # Class 1: Player
 # ===========================
+
 """This will represent an NFL player with their basic information
 
 This class will encapsulate player identity, position, team affiliation, and provides methods for managing and
@@ -410,4 +413,96 @@ def __init__(self, player_id: str, name: str, position: str, team: str):
     Raises: 
         ValueError: If any parameter is invalid or empty
 """
+if not isinstance(player_id, str) or not player_id.strip():
+    raise ValueError("Player ID cannot be empty")
 
+if not isinstance(name, str) or not name.strip():
+    raise ValueError("Player name cannot be empty")
+
+if not isinstance(position, str) or position.upper() not in self.VALID_POSITIONS:
+    raise ValueError(f"Invalid position: {position}. Must be on of {self.VALID_POSITIONS}")
+
+if not isinstance(team, str) or team.upper() not in self.VALID_TEAMS:
+    raise ValueError(f"Invalid: {team}. Must be one of {self.VALID_TEAMS}")
+
+self._player_id = player_id.strip()
+self._name = self._clean_name(name)
+self._position = position.upper()
+self._team = team.upper()
+self._stats_history: List[GameStats] = []
+
+@staticmethod
+def _clean_name(name: str) ->: str:
+    """Clean and format player name (integration with Project 1 Function)."""
+    return " ".join(name.strip().split()).title()
+
+@property
+def player_id(self) -> str:
+    """str: Get the player ID (read-only)."""
+    return self._player_id
+
+@property
+def name(self) -> str:
+    """str: Get the player's name."""
+    return self._name
+
+@property
+def position(self) -> str:
+    """str: Get the player's position."""
+    return self._position
+
+@property
+def team(self) -> str: 
+    """str: Get the player's team."""
+    return self._team
+
+@team.setter
+def team(self, new_team: str) -> None:
+    """Set player's team (for trades/signings)."""
+    if no isinstance(new_team, str) or new_team.upper() not in self.VALID_TEAMS:
+        raise ValueError(f"Invalid team: {new_team}")
+    self._team = new_team.upper()
+
+def is_quarterback(self) -> bool:
+    """Check if player is a quarterback."""
+    return self._position == "QB"
+
+def is_skill_position(self) -> bool:
+    """Check if player is in a skill position (QB, RB, WR, TE)."""
+    return self._position in {"QB", "RB", "WR", "TE"}
+
+def add_game_stats(self, stats: GameStats) -> None:
+    """Add game statistics to player's history.
+
+    Args: 
+        stats (GameStats): Game Statistics object to add
+
+    Raises: 
+        ValueError: If stats object is invalid
+
+    if not isinstance(stats, GameStats):
+        raise ValueError("Must provide a valid GameStats object")
+    self._stats_history.append(stats)
+
+def get_career_totals(self, stat_name: str) -> float:
+    """Calculate career total for a specific statistics.
+
+    Args: 
+        stat_name (str): Name of the statistics (e.g. 'passing_yards', 'touchdowns')
+
+    Returns:
+        floatTotal value of the statistic across all games
+    """
+
+    total = 0.0
+    for game in self._stats_history:
+        total += game.get_stat(stat_name)
+    return total
+
+def __str__(self) -> str: 
+    """Return user-friendly string representation."""
+    return f"{self._name} ({self._position}) - {self._team}"
+
+def __repr__(self) -> str: 
+    """Return detailed string representation for debugging."""
+    return f"Player(id = 'self._player_id}', name = '{self._name}', position = '{self._position}', team = '{self._team}')"
