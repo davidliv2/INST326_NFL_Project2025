@@ -46,45 +46,70 @@ def safe_divide(a: float, b: float, default: float = 0.0) -> float:
 # ==============================================
 class Player:
     """Represents a single NFL player and basic analytics."""
+class Player:
+    """
+    Player class for our NFL project.
+    Stores info about one player and lets us calculate efficiency stats.
+    """
 
     def __init__(self, name: str, team: Optional[str] = None,
                  position: Optional[str] = None, games_df: Optional[pd.DataFrame] = None):
-        name = clean_name(name)
-        if not name:
+        """
+        Initialize a Player object.
+
+        name: player name (string)
+        team: 3-letter team code like "MIA" or "BUF" (optional)
+        position: player position like "QB" (optional)
+        games_df: pandas DataFrame with game data for this player (optional)
+        """
+        # Clean and validate the name
+        fixed_name = clean_name(name)
+        if fixed_name == "":
             raise ValueError("Player name cannot be empty.")
+
+        # Validate team and position only if provided
         if team and not validate_team(team):
-            raise ValueError(f"Invalid team abbreviation: {team}")
+            raise ValueError("Team must be a valid NFL team code.")
         if position and not validate_position(position):
-            raise ValueError(f"Invalid position: {position}")
+            raise ValueError("Position must be a valid NFL position.")
 
-        self._name = name
-        self._team = team
-        self._position = position
-        self._games_df = games_df
-
-    @property
-    def name(self): return self._name
-    @property
-    def team(self): return self._team
-    @property
-    def position(self): return self._position
+        # set up attributes
+        self.name = fixed_name
+        self.team = team
+        self.position = position
+        self.games_df = games_df
 
     def efficiency(self) -> Dict[str, float]:
-        """Compute yards per play and touchdown rate."""
-        if self._games_df is None or "yards" not in self._games_df.columns:
+        """
+        Calculate the player's efficiency using yards per play
+        and touchdown rate.
+
+        Returns:
+            A dictionary with 'ypp' and 'td_rate'.
+        """
+        # if we don't have data for the player
+        if self.games_df is None or "yards" not in self.games_df.columns:
             return {"ypp": 0.0, "td_rate": 0.0}
-        yards = float(self._games_df["yards"].sum())
-        plays = float(self._games_df["plays"].sum()) if "plays" in self._games_df.columns else len(self._games_df)
-        tds = float(self._games_df["td"].sum()) if "td" in self._games_df.columns else 0.0
+
+        yards = float(self.games_df["yards"].sum())
+        plays = float(self.games_df["plays"].sum()) if "plays" in self.games_df.columns else len(self.games_df)
+        tds = float(self.games_df["td"].sum()) if "td" in self.games_df.columns else 0.0
+
         ypp = safe_divide(yards, plays)
         td_rate = safe_divide(tds, plays)
+
         return {"ypp": round(ypp, 3), "td_rate": round(td_rate, 4)}
 
     def __str__(self):
-        return f"{self._name} ({self._position or 'N/A'}) – {self._team or 'FA'}"
+        """Return a simple string for printing."""
+        pos = self.position if self.position else "N/A"
+        team = self.team if self.team else "FA"
+        return f"{self.name} ({pos}) - {team}"
 
     def __repr__(self):
-        return f"Player(name='{self._name}', team='{self._team}', position='{self._position}')"
+        """Return a string for debugging."""
+        return f"Player(name='{self.name}', team='{self.team}', position='{self.position}')"
+
 
 
 # ===============================================================
