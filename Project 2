@@ -15,9 +15,9 @@ import os
 from datetime import datetime, timedelta
 
 
-# -----------------------------
-# Simple validation and helpers
-# -----------------------------
+
+# validation and helpers
+
 VALID_TEAMS = {
     "ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE",
     "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAX", "KC",
@@ -41,9 +41,9 @@ def safe_divide(a: float, b: float, default: float = 0.0) -> float:
     return a / b if b != 0 else default
 
 
-# ===============================================================
+# ==============================================
 # CLASS 1: Player
-# ===============================================================
+# ==============================================
 class Player:
     """Represents a single NFL player and basic analytics."""
 
