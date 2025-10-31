@@ -2,7 +2,6 @@
 Project 2
 Team: Gridiron Data Systems (David, Dash, Andrew)
 Course: INST326
-------------------------------------------------------
 5 main classes: Player, StatsDataset, AnalyticsEngine, Visualizer, and Exporter.
 """
 
