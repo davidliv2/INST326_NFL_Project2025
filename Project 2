@@ -245,39 +245,4 @@ class Exporter:
         print(f"JSON saved to {path}")
 
 
-# ===============================================================
-# DEMO / MAIN EXECUTION
-# ===============================================================
-if __name__ == "__main__":
-    print("=== NFL OOP Project 2 Demo ===")
-
-    # Sample dataset for demo (replace with real file later)
-    data = {
-        "player": ["Tua Tagovailoa", "Josh Allen", "Patrick Mahomes", "Tua Tagovailoa", "Josh Allen"],
-        "position": ["QB", "QB", "QB", "QB", "QB"],
-        "team": ["MIA", "BUF", "KC", "MIA", "BUF"],
-        "passing_yards": [280, 300, 310, 260, 295],
-        "yards": [280, 300, 310, 260, 295],
-        "plays": [35, 38, 40, 33, 37],
-        "td": [3, 2, 3, 2, 3]
-    }
-    df = pd.DataFrame(data)
-
-    stats = StatsDataset(df)
-    leaderboard = stats.leaderboard("passing_yards", position="QB", top_n=3)
-    print("\nTop QB Leaderboard:\n", leaderboard)
-
-    Visualizer.leaderboard_plot(leaderboard, "passing_yards", show=False)
-    Exporter.to_csv(leaderboard, "output/top_qbs.csv")
-
-    tua_games = df[df["player"] == "Tua Tagovailoa"]
-    tua = Player("Tua Tagovailoa", team="MIA", position="QB", games_df=tua_games)
-    print("\nPlayer:", tua)
-    print("Efficiency:", tua.efficiency())
-
-    qb_rate = AnalyticsEngine.qb_rating(35, 25, 280, 3, 1)
-    print("\nExample QB Rating:", qb_rate)
-
-    forecast = AnalyticsEngine.forecast_mean_last_n(df, "Josh Allen", "passing_yards", n=2)
-    print("Forecast (Josh Allen last 2 games):", forecast)
 
