@@ -1,1 +1,259 @@
+"""
+NFL OOP Analytics System – Project 2
+Team: Gridiron Data Systems (David, Dash, Andrew)
+Course: INST326 – Object-Oriented Programming for Information Science
+------------------------------------------------------
+5 main classes: Player, StatsDataset, AnalyticsEngine, Visualizer, and Exporter.
+"""
+
+# ===============================================================
+# Imports and Shared Utilities (from Project 1)
+# ===============================================================
+from typing import Optional, Dict, List
+import pandas as pd
+import matplotlib.pyplot as plt
+import os
+from datetime import datetime, timedelta
+
+
+# -----------------------------
+# Simple validation and helpers
+# -----------------------------
+VALID_TEAMS = {
+    "ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE",
+    "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAX", "KC",
+    "LV", "LAC", "LAR", "MIA", "MIN", "NE", "NO", "NYG",
+    "NYJ", "PHI", "PIT", "SEA", "SF", "TB", "TEN", "WAS"
+}
+VALID_POSITIONS = {"QB", "RB", "WR", "TE", "K", "P", "CB", "S", "LB", "DL", "OL"}
+
+def clean_name(name: str) -> str:
+    if not isinstance(name, str):
+        return ""
+    return " ".join(name.strip().split()).title()
+
+def validate_team(team: str) -> bool:
+    return team.upper() in VALID_TEAMS
+
+def validate_position(pos: str) -> bool:
+    return pos.upper() in VALID_POSITIONS
+
+def safe_divide(a: float, b: float, default: float = 0.0) -> float:
+    return a / b if b != 0 else default
+
+
+# ===============================================================
+# CLASS 1: Player
+# ===============================================================
+class Player:
+    """Represents a single NFL player and basic analytics."""
+
+    def __init__(self, name: str, team: Optional[str] = None,
+                 position: Optional[str] = None, games_df: Optional[pd.DataFrame] = None):
+        name = clean_name(name)
+        if not name:
+            raise ValueError("Player name cannot be empty.")
+        if team and not validate_team(team):
+            raise ValueError(f"Invalid team abbreviation: {team}")
+        if position and not validate_position(position):
+            raise ValueError(f"Invalid position: {position}")
+
+        self._name = name
+        self._team = team
+        self._position = position
+        self._games_df = games_df
+
+    @property
+    def name(self): return self._name
+    @property
+    def team(self): return self._team
+    @property
+    def position(self): return self._position
+
+    def efficiency(self) -> Dict[str, float]:
+        """Compute yards per play and touchdown rate."""
+        if self._games_df is None or "yards" not in self._games_df.columns:
+            return {"ypp": 0.0, "td_rate": 0.0}
+        yards = float(self._games_df["yards"].sum())
+        plays = float(self._games_df["plays"].sum()) if "plays" in self._games_df.columns else len(self._games_df)
+        tds = float(self._games_df["td"].sum()) if "td" in self._games_df.columns else 0.0
+        ypp = safe_divide(yards, plays)
+        td_rate = safe_divide(tds, plays)
+        return {"ypp": round(ypp, 3), "td_rate": round(td_rate, 4)}
+
+    def __str__(self):
+        return f"{self._name} ({self._position or 'N/A'}) – {self._team or 'FA'}"
+
+    def __repr__(self):
+        return f"Player(name='{self._name}', team='{self._team}', position='{self._position}')"
+
+
+# ===============================================================
+# CLASS 2: StatsDataset
+# ===============================================================
+class StatsDataset:
+    """Loads, stores, and analyzes NFL statistics."""
+
+    def __init__(self, df: pd.DataFrame):
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            raise ValueError("StatsDataset requires a valid DataFrame.")
+        self._df = df
+
+    @property
+    def df(self) -> pd.DataFrame:
+        """Return a copy of the internal DataFrame."""
+        return self._df.copy()
+
+    @classmethod
+    def from_csv(cls, path: str) -> "StatsDataset":
+        df = pd.read_csv(path)
+        return cls(df)
+
+    def leaderboard(self, stat: str, position: Optional[str] = None,
+                    season: Optional[int] = None, top_n: int = 10) -> pd.DataFrame:
+        """Return a leaderboard of top players by a stat."""
+        data = self._df.copy()
+        if "player" not in data.columns or stat not in data.columns:
+            return pd.DataFrame()
+
+        if season and "season" in data.columns:
+            data = data[data["season"] == season]
+        if position and "position" in data.columns:
+            data = data[data["position"].str.upper() == position.upper()]
+
+        out = (data.groupby("player")[stat]
+               .sum(numeric_only=True)
+               .reset_index()
+               .sort_values(stat, ascending=False)
+               .head(top_n))
+        out.insert(0, "rank", range(1, len(out) + 1))
+        return out[["rank", "player", stat]]
+
+    def compare_players(self, players: List[str], stats: List[str]) -> Dict[str, Dict[str, float]]:
+        """Compare multiple players on selected stats."""
+        data = self._df.copy()
+        results = {}
+        for p in players:
+            p_clean = clean_name(p)
+            sub = data[data["player"].str.lower() == p_clean.lower()]
+            results[p_clean] = {s: float(sub[s].sum()) if s in sub.columns else 0.0 for s in stats}
+        return results
+
+
+# ===============================================================
+# CLASS 3: AnalyticsEngine
+# ===============================================================
+class AnalyticsEngine:
+    """Provides advanced calculations for NFL performance metrics."""
+
+    @staticmethod
+    def qb_rating(att: int, comp: int, yds: int, td: int, ints: int) -> float:
+        """Compute NFL passer rating (0–158.3)."""
+        if att <= 0:
+            return 0.0
+        def clip(x): return max(0, min(2.375, x))
+        a = clip(((comp / att) - 0.3) * 5)
+        b = clip(((yds / att) - 3) * 0.25)
+        c = clip((td / att) * 20)
+        d = clip(2.375 - ((ints / att) * 25))
+        return round(((a + b + c + d) / 6) * 100, 1)
+
+    @staticmethod
+    def forecast_mean_last_n(df: pd.DataFrame, player: str, stat: str, n: int = 5) -> float:
+        """Predict future performance as mean of last n games."""
+        player = clean_name(player)
+        sub = df[df["player"].str.title() == player].dropna(subset=[stat]).tail(n)
+        if sub.empty:
+            return 0.0
+        return round(sub[stat].mean(), 2)
+
+
+# ===============================================================
+# CLASS 4: Visualizer
+# ===============================================================
+class Visualizer:
+    """Handles charting and plotting of analytics results."""
+
+    @staticmethod
+    def leaderboard_plot(df: pd.DataFrame, stat: str, save_path: Optional[str] = None, show: bool = True):
+        if df.empty:
+            print("Visualizer: No data to plot.")
+            return
+        plt.figure(figsize=(9, 5))
+        plt.barh(df["player"], df[stat], color="skyblue")
+        plt.title(f"Top {len(df)} Players by {stat.title()}")
+        plt.xlabel(stat.title())
+        plt.gca().invert_yaxis()
+        plt.tight_layout()
+
+        if save_path:
+            os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+            plt.savefig(save_path, dpi=150)
+            print(f"Plot saved to {save_path}")
+        if show:
+            plt.show()
+        else:
+            plt.close()
+
+
+# ===============================================================
+# CLASS 5: Exporter
+# ===============================================================
+class Exporter:
+    """Exports DataFrames to CSV or JSON files."""
+
+    @staticmethod
+    def to_csv(df: pd.DataFrame, path: str):
+        if df.empty:
+            print("Exporter: nothing to save.")
+            return
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        df.to_csv(path, index=False)
+        print(f"CSV saved to {path}")
+
+    @staticmethod
+    def to_json(df: pd.DataFrame, path: str):
+        if df.empty:
+            print("Exporter: nothing to save.")
+            return
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        df.to_json(path, orient="records", indent=2)
+        print(f"JSON saved to {path}")
+
+
+# ===============================================================
+# DEMO / MAIN EXECUTION
+# ===============================================================
+if __name__ == "__main__":
+    print("=== NFL OOP Project 2 Demo ===")
+
+    # Sample dataset for demo (replace with real file later)
+    data = {
+        "player": ["Tua Tagovailoa", "Josh Allen", "Patrick Mahomes", "Tua Tagovailoa", "Josh Allen"],
+        "position": ["QB", "QB", "QB", "QB", "QB"],
+        "team": ["MIA", "BUF", "KC", "MIA", "BUF"],
+        "passing_yards": [280, 300, 310, 260, 295],
+        "yards": [280, 300, 310, 260, 295],
+        "plays": [35, 38, 40, 33, 37],
+        "td": [3, 2, 3, 2, 3]
+    }
+    df = pd.DataFrame(data)
+
+    stats = StatsDataset(df)
+    leaderboard = stats.leaderboard("passing_yards", position="QB", top_n=3)
+    print("\nTop QB Leaderboard:\n", leaderboard)
+
+    Visualizer.leaderboard_plot(leaderboard, "passing_yards", show=False)
+    Exporter.to_csv(leaderboard, "output/top_qbs.csv")
+
+    tua_games = df[df["player"] == "Tua Tagovailoa"]
+    tua = Player("Tua Tagovailoa", team="MIA", position="QB", games_df=tua_games)
+    print("\nPlayer:", tua)
+    print("Efficiency:", tua.efficiency())
+
+    qb_rate = AnalyticsEngine.qb_rating(35, 25, 280, 3, 1)
+    print("\nExample QB Rating:", qb_rate)
+
+    forecast = AnalyticsEngine.forecast_mean_last_n(df, "Josh Allen", "passing_yards", n=2)
+    print("Forecast (Josh Allen last 2 games):", forecast)
 
