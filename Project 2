@@ -45,11 +45,10 @@ def safe_divide(a: float, b: float, default: float = 0.0) -> float:
 # CLASS 1: Player
 # ==============================================
 class Player:
-    """Represents a single NFL player and basic analytics."""
-class Player:
     """
     Player class for our NFL project.
-    Stores info about one player and lets us calculate efficiency stats.
+    Stores info about one player and lets us calculate efficiency stats and provides methods
+    to calculate performance metrics like yards per play and touchdown rate for efficiency analysis.
     """
 
     def __init__(self, name: str, team: Optional[str] = None,
@@ -116,7 +115,10 @@ class Player:
 # CLASS 2: StatsDataset
 # ===============================================================
 class StatsDataset:
-    """Loads, stores, and analyzes NFL statistics."""
+    """
+    StatsDataset class for managing NFL player stats. Loads, stores, and analyzes NFL statistics and
+    provides tools to create leaderboards and compare players across stats.
+    """
 
     def __init__(self, df: pd.DataFrame):
         if not isinstance(df, pd.DataFrame) or df.empty:
@@ -168,7 +170,10 @@ class StatsDataset:
 # CLASS 3: AnalyticsEngine
 # ===============================================================
 class AnalyticsEngine:
-    """Provides advanced calculations for NFL performance metrics."""
+    """
+    Provides advanced calculations for NFL performance metrics and performs NFL-specific analytics 
+    such as QB passer rating and statistical forecasting based on recent player data.
+    """
 
     @staticmethod
     def qb_rating(att: int, comp: int, yds: int, td: int, ints: int) -> float:
@@ -196,7 +201,10 @@ class AnalyticsEngine:
 # CLASS 4: Visualizer
 # ===============================================================
 class Visualizer:
-    """Handles charting and plotting of analytics results."""
+    """
+    Handles charting and plotting of analytics results. Creates visual summaries like leaderboards 
+    and performance plots to make player analytics easier to interpret.
+    """
 
     @staticmethod
     def leaderboard_plot(df: pd.DataFrame, stat: str, save_path: Optional[str] = None, show: bool = True):
@@ -224,7 +232,10 @@ class Visualizer:
 # CLASS 5: Exporter
 # ===============================================================
 class Exporter:
-    """Exports DataFrames to CSV or JSON files."""
+    """
+    Exporter class for saving processed NFL data. Supports exporting DataFrames to CSV or 
+    JSON formats for easy sharing and storage of analysis results.
+    """
 
     @staticmethod
     def to_csv(df: pd.DataFrame, path: str):
