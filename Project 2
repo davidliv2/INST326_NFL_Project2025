@@ -13,8 +13,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 from datetime import datetime, timedelta
-
-
+# ===============================================================
 
 # validation and helpers
 
@@ -123,6 +122,8 @@ class StatsDataset:
     def __init__(self, df: pd.DataFrame):
         if not isinstance(df, pd.DataFrame) or df.empty:
             raise ValueError("StatsDataset requires a valid DataFrame.")
+        if df.empty:
+            logger.warning("Initializing StatsDataset with empty DataFrame")
         self._df = df
 
     @property
@@ -132,26 +133,72 @@ class StatsDataset:
 
     @classmethod
     def from_csv(cls, path: str) -> "StatsDataset":
-        df = pd.read_csv(path)
-        return cls(df)
+        """
+        Load dataset from CSV file.
+        
+        Args:
+            path: Path to CSV file
+        
+        Returns:
+            StatsDataset instance
+        
+        Raises:
+            FileNotFoundError: If CSV file doesn't exist
+            ValueError: If CSV is empty or invalid
+        """
+        try:
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"CSV file not found: {path}")
+
+            df = pd.read_csv(path)
+
+            if df.empty:
+                raise ValueError(f"CSV file is empty: {path}")
+
+            logger.info(f"Successfully loaded {len(df)} rows from {path}")
+            return cls(df)
+
+    except pd.errors.EmptyDataError: 
+        raise ValueError(f"CSV file contains no data: {path}")
+    except Exception as e:
+        logger.error(f"Error loading CSV: {e}")
+        raise
 
     def leaderboard(self, stat: str, position: Optional[str] = None,
                     season: Optional[int] = None, top_n: int = 10) -> pd.DataFrame:
-        """Return a leaderboard of top players by a stat."""
+        """
+        Generate a leaderboard of top players by a specific stat.
+        
+        Args:
+            stat: Statistical category to rank by
+            position: Filter by position (optional)
+            season: Filter by season (optional)
+            top_n: Number of top players to return
+        
+        Returns:
+            DataFrame with ranked players
+        """
         data = self._df.copy()
         if "player" not in data.columns or stat not in data.columns:
+            logger.warning(f"Required columns missing. Need 'player' and '{stat}'")
             return pd.DataFrame()
 
+        # Apply filters
         if season and "season" in data.columns:
             data = data[data["season"] == season]
+            logger.info(f"Filtered to season {season}")
+        
         if position and "position" in data.columns:
             data = data[data["position"].str.upper() == position.upper()]
+            logger.info(f"Filtered to position {position}")
 
+        # Generate leaderboard
         out = (data.groupby("player")[stat]
                .sum(numeric_only=True)
                .reset_index()
                .sort_values(stat, ascending=False)
                .head(top_n))
+        
         out.insert(0, "rank", range(1, len(out) + 1))
         return out[["rank", "player", stat]]
 
@@ -159,101 +206,195 @@ class StatsDataset:
         """Compare multiple players on selected stats."""
         data = self._df.copy()
         results = {}
+        
         for p in players:
             p_clean = clean_name(p)
             sub = data[data["player"].str.lower() == p_clean.lower()]
-            results[p_clean] = {s: float(sub[s].sum()) if s in sub.columns else 0.0 for s in stats}
+            
+            if sub.empty:
+                logger.warning(f"No data found for player: {p_clean}")
+            
+            results[p_clean] = {
+                s: float(sub[s].sum()) if s in sub.columns else 0.0 
+                for s in stats
+            }
+        
         return results
-
 
 # ===============================================================
 # CLASS 3: AnalyticsEngine
 # ===============================================================
 class AnalyticsEngine:
     """
-    Provides advanced calculations for NFL performance metrics and performs NFL-specific analytics 
-    such as QB passer rating and statistical forecasting based on recent player data.
+    Provides advanced calculations for NFL performance metrics.
+    
+    Performs NFL-specific analytics such as QB passer rating and
+    statistical forecasting based on recent player data.
     """
 
     @staticmethod
     def qb_rating(att: int, comp: int, yds: int, td: int, ints: int) -> float:
-        """Compute NFL passer rating (0–158.3)."""
+        """   
+        Compute NFL passer rating (0–158.3).
+
+        Args:
+            att: Pass attempts
+            comp: Completions
+            yds: Passing Yards
+            td: Touchdowns
+            ints: Interceptions
+
+        Returns: 
+            Passer rating between 0.0 and 158.3
+
+        Example:
+            >>> AnalyticsEngine.qb_rating(400, 250, 3000, 20, 10)
+            95.8
+        """
         if att <= 0:
+            logger.warning("Pass attempts must be greater than 0")
             return 0.0
-        def clip(x): return max(0, min(2.375, x))
+        
+        def clip(x): 
+            return max(0, min(2.375, x))
+        
         a = clip(((comp / att) - 0.3) * 5)
         b = clip(((yds / att) - 3) * 0.25)
         c = clip((td / att) * 20)
         d = clip(2.375 - ((ints / att) * 25))
-        return round(((a + b + c + d) / 6) * 100, 1)
+        
+        rating = ((a + b + c + d) / 6) * 100
+        return round(rating, 1)
 
     @staticmethod
     def forecast_mean_last_n(df: pd.DataFrame, player: str, stat: str, n: int = 5) -> float:
-        """Predict future performance as mean of last n games."""
+        """
+        Predict future performance as mean of last n games.
+        
+        Args:
+            df: DataFrame with player game data
+            player: Player name
+            stat: Statistic to forecast
+            n: Number of recent games to average
+        
+        Returns:
+            Predicted value based on recent performance
+        """
+        if df.empty:
+            logger.warning("Cannot forecast from empty DataFrame")
+            return 0.0
+        
         player = clean_name(player)
         sub = df[df["player"].str.title() == player].dropna(subset=[stat]).tail(n)
+        
         if sub.empty:
+            logger.warning(f"No data found for {player} in stat '{stat}'")
             return 0.0
-        return round(sub[stat].mean(), 2)
-
+        
+        forecast = round(sub[stat].mean(), 2)
+        logger.info(f"Forecast for {player} ({stat}): {forecast} (last {len(sub)} games)")
+        return forecast
 
 # ===============================================================
 # CLASS 4: Visualizer
 # ===============================================================
 class Visualizer:
     """
-    Handles charting and plotting of analytics results. Creates visual summaries like leaderboards 
-    and performance plots to make player analytics easier to interpret.
+    Handles charting and plotting of analytics results.
+    
+    Creates visual summaries like leaderboards and performance plots
+    to make player analytics easier to interpret.
     """
 
     @staticmethod
-    def leaderboard_plot(df: pd.DataFrame, stat: str, save_path: Optional[str] = None, show: bool = True):
+    def leaderboard_plot(df: pd.DataFrame, stat: str, 
+                        save_path: Optional[str] = None, show: bool = True):
+        """
+        Creates a horizontal bar chart for a leaderboard.
+        
+        Args:
+            df: DataFrame with leaderboard data (must have 'player' and stat columns)
+            stat: Statistical category being visualized
+            save_path: Optional path to save the plot
+            show: Whether to display the plot
+        """
         if df.empty:
-            print("Visualizer: No data to plot.")
+            logger.warning("No data to plot.")
             return
-        plt.figure(figsize=(9, 5))
-        plt.barh(df["player"], df[stat], color="skyblue")
-        plt.title(f"Top {len(df)} Players by {stat.title()}")
-        plt.xlabel(stat.title())
-        plt.gca().invert_yaxis()
-        plt.tight_layout()
+        
+        # Using context manager for better resource handling
+        with plt.style.context('default'):
+            fig, ax = plt.subplots(figsize=(9, 5))
+            
+            ax.barh(df["player"], df[stat], color="skyblue")
+            ax.set_title(f"Top {len(df)} Players by {stat.title()}", fontsize=14, fontweight='bold')
+            ax.set_xlabel(stat.title(), fontsize=12)
+            ax.invert_yaxis()
+            
+            plt.tight_layout()
 
-        if save_path:
-            os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-            plt.savefig(save_path, dpi=150)
-            print(f"Plot saved to {save_path}")
-        if show:
-            plt.show()
-        else:
-            plt.close()
-
+            if save_path:
+                try:
+                    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+                    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+                    logger.info(f"Plot saved to {save_path}")
+                except Exception as e:
+                    logger.error(f"Failed to save plot: {e}")
+            
+            if show:
+                plt.show()
+            else:
+                plt.close()
 
 # ===============================================================
 # CLASS 5: Exporter
 # ===============================================================
 class Exporter:
     """
-    Exporter class for saving processed NFL data. Supports exporting DataFrames to CSV or 
-    JSON formats for easy sharing and storage of analysis results.
+    Exports processed NFL data to various formats.
+    
+    Supports exporting DataFrames to CSV or JSON formats for easy
+    sharing and storage of analysis results.
     """
 
     @staticmethod
     def to_csv(df: pd.DataFrame, path: str):
+        """
+        Export DataFrame to CSV file.
+        
+        Args:
+            df: DataFrame to export
+            path: Destination file path
+        """
         if df.empty:
-            print("Exporter: nothing to save.")
+            logger.warning("Nothing to save - DataFrame is empty.")
             return
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        df.to_csv(path, index=False)
-        print(f"CSV saved to {path}")
+        
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            df.to_csv(path, index=False)
+            logger.info(f"CSV saved to {path} ({len(df)} rows)")
+        except Exception as e:
+            logger.error(f"Failed to save CSV: {e}")
+            raise
 
     @staticmethod
     def to_json(df: pd.DataFrame, path: str):
+        """
+        Export DataFrame to JSON file.
+        
+        Args:
+            df: DataFrame to export
+            path: Destination file path
+        """
         if df.empty:
-            print("Exporter: nothing to save.")
+            logger.warning("Nothing to save - DataFrame is empty.")
             return
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        df.to_json(path, orient="records", indent=2)
-        print(f"JSON saved to {path}")
-
-
-
+        
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            df.to_json(path, orient="records", indent=2)
+            logger.info(f"JSON saved to {path} ({len(df)} rows)")
+        except Exception as e:
+            logger.error(f"Failed to save JSON: {e}")
+            raise
