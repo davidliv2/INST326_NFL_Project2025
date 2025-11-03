@@ -1,5 +1,5 @@
 - `Player` – individual player object with validation and basic analytics
 - `StatsDataset` – holds the full stats DataFrame and provides aggregate queries
-- `AnalyticsEngine` – stateless football calculations (QB rating, forecasts)
-- `Visualizer` – plotting of leaderboards and player trends
-- `Exporter` – saving results to disk
+- `AnalyticsEngine` – football calculations (QB rating, forecasts)
+- `Visualizer` – plotting and visual data of leaderboards and player data
+- `Exporter` – saving results 
