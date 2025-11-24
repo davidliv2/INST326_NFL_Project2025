@@ -118,7 +118,7 @@ team_analysis = AnalyticsEngine.team_position_analysis(bills)
 Run the comprehensive test suite:
 
 ```bash
-python test_nfl_analytics.py
+python test_nfl_analytics_project3.py
 ```
 
 ### Test Coverage
@@ -205,7 +205,7 @@ print(f"Record: {team.season_stats}")
 
 ---
 
-## 🎯 Key Design Decisions
+##  Key Design Decisions
 
 ### Inheritance vs Composition
 
@@ -242,7 +242,7 @@ class Player(ABC):
 ```
 project-repo/
 │
-├── nfl_analytics_improved.py     # Main system implementation
+├── nfl_analytics_improved_project3.py     # Main system implementation
 ├── test_nfl_analytics.py         # Comprehensive test suite
 ├── README.md                     # This file
 ├── docs/
