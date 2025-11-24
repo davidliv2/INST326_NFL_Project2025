@@ -18,7 +18,7 @@ This NFL Analytics System demonstrates advanced Object-Oriented Programming conc
 
 ---
 
-## 📋 Project Requirements Met
+## Project Requirements Met
 
 **Inheritance Hierarchy** - Player base class with 3 derived classes  
 **Abstract Base Classes** - ABC module with abstract methods  
@@ -133,7 +133,7 @@ The test suite covers all OOP concepts:
 
 ---
 
-## 📊 Examples of OOP Concepts
+## Examples of OOP Concepts
 
 ### 1. Inheritance Example
 
