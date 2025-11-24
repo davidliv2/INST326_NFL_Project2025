@@ -67,7 +67,7 @@ for player in mixed_roster:
 
 ---
 
-## 💻 Installation and Usage
+## Installation and Usage
 
 ### Prerequisites
 ```bash
