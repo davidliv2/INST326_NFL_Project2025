@@ -3,8 +3,6 @@
 *INST326 Complete Information Science Application*
 *Team: Gridiron Data Systems*  
 *Members: David, Dash, Andrew*  
-*Semester: Fall 2024*
-
 ---
 
 #Project Overview
