@@ -1,47 +1,68 @@
 """
-NFL Analytics System - Project 4: Capstone Integration & Testing
-INST326 Advanced OOP with Data Persistence
+NFL Analytics System - Project 4 Capstone
+INST326 Complete Information Science Application
 
 Team: Gridiron Data Systems (David, Dash, Andrew)
 
-Complete system integrating Projects 1-3 with data persistence,
-I/O capabilities and comprehensive testing.
+This system extends Project 3 with data persistence, complete workflows,
+and comprehensive testing for a professional NFL analytics application.
 """
 
 from __future__ import annotations
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from abc import ABC, abstractmethod
-from pathlib import Path
 import pandas as pd
 import json
-import csv
+import pickle
+from pathlib import Path
+from datetime import datetime
+import logging
 
-# ============================================================================
-# CORE PLAYER CLASSES (From Project 3 - Inheritance & Polymorphism)
-# ============================================================================
+# Set up logging for error tracking
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 def clean_name(name: str) -> str:
     """Clean and standardize player names."""
     return str(name).strip()
 
+# Valid NFL team abbreviations
 VALID_TEAMS = {
     "ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE","DAL","DEN","DET","GB",
     "HOU","IND","JAX","KC","LV","LAC","LAR","MIA","MIN","NE","NO","NYG","NYJ",
     "PHI","PIT","SEA","SF","TB","TEN","WAS"
 }
 
+# NFL team full names for better reports
+TEAM_NAMES = {
+    "BUF": "Buffalo Bills", "LAR": "Los Angeles Rams", "KC": "Kansas City Chiefs",
+    "GB": "Green Bay Packers", "DAL": "Dallas Cowboys", "SF": "San Francisco 49ers",
+    "PHI": "Philadelphia Eagles", "MIA": "Miami Dolphins", "BAL": "Baltimore Ravens",
+    "CIN": "Cincinnati Bengals", "NYJ": "New York Jets", "NE": "New England Patriots",
+    # Add more as needed for comprehensive coverage
+}
+
+class DataPersistenceError(Exception):
+    """Custom exception for data persistence issues."""
+    pass
+
 class Player(ABC):
-    """Abstract base class for all NFL players."""
+    """
+    Abstract base class for all NFL players.
+    Demonstrates inheritance hierarchy with polymorphic behavior.
+    """
     
     def __init__(self, name: str, team: Optional[str], position: Optional[str]):
         self.name = clean_name(name)
         self.team = team
         self.position = position
         self.games_played = 0
+        self.player_id = None  # For tracking players across seasons
+        self.last_updated = datetime.now()
 
     @abstractmethod
     def efficiency_score(self) -> float:
-        """Calculate player efficiency score."""
+        """Calculate player efficiency score - must be implemented by subclasses."""
         pass
 
     @abstractmethod
@@ -50,14 +71,31 @@ class Player(ABC):
         pass
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert player to dictionary for persistence."""
-        return {
+        """Convert player to dictionary for serialization."""
+        base_dict = {
             "name": self.name,
             "team": self.team,
             "position": self.position,
             "games_played": self.games_played,
-            "player_type": self.__class__.__name__
+            "player_type": self.__class__.__name__,
+            "last_updated": self.last_updated.isoformat()
         }
+        return base_dict
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Player':
+        """Create player from dictionary - factory method for loading."""
+        player_type = data.get("player_type", "GenericPlayer")
+        
+        if player_type == "OffensivePlayer":
+            return OffensivePlayer.from_dict(data)
+        elif player_type == "DefensivePlayer":
+            return DefensivePlayer.from_dict(data)
+        elif player_type == "SpecialTeamsPlayer":
+            return SpecialTeamsPlayer.from_dict(data)
+        else:
+            # Fallback for unknown types
+            return GenericPlayer(data.get("name", ""), data.get("team"), data.get("position"))
 
     def summary_row(self) -> Dict[str, object]:
         """Return a summary of player data for reports."""
@@ -72,9 +110,12 @@ class Player(ABC):
     def __str__(self) -> str:
         return f"{self.name} ({self.position}) - {self.team}"
 
+    def __repr__(self) -> str:
+        return f"Player('{self.name}', '{self.team}', '{self.position}')"
+
 
 class OffensivePlayer(Player):
-    """Represents offensive players."""
+    """Represents offensive players (QB, RB, WR, TE)."""
     
     def __init__(self, name: str, team: Optional[str], position: Optional[str],
                  passing_yards: int = 0, rushing_yards: int = 0, 
@@ -85,41 +126,64 @@ class OffensivePlayer(Player):
         self.receiving_yards = receiving_yards
         self.touchdowns = touchdowns
         self.games_played = games_played
+        self.fumbles = 0  # Additional stat for more comprehensive analysis
 
     def efficiency_score(self) -> float:
-        """Calculate offensive efficiency."""
+        """Calculate offensive efficiency based on yards and touchdowns."""
         if self.games_played == 0:
             return 0.0
+            
         yards_score = (
             self.passing_yards * 0.10 +
             self.rushing_yards * 0.20 +
             self.receiving_yards * 0.20
         )
         td_score = self.touchdowns * 6
-        return (yards_score + td_score) / max(self.games_played, 1)
+        fumble_penalty = self.fumbles * -2  # Fumbles hurt efficiency
+        
+        return (yards_score + td_score + fumble_penalty) / max(self.games_played, 1)
 
     def get_primary_stats(self) -> Dict[str, Any]:
-        """Return offensive statistics."""
+        """Return the most relevant offensive statistics."""
+        total_yards = self.passing_yards + self.rushing_yards + self.receiving_yards
         return {
-            "total_yards": self.passing_yards + self.rushing_yards + self.receiving_yards,
+            "total_yards": total_yards,
             "touchdowns": self.touchdowns,
-            "yards_per_game": (self.passing_yards + self.rushing_yards + self.receiving_yards) / max(self.games_played, 1)
+            "yards_per_game": total_yards / max(self.games_played, 1),
+            "fumbles": self.fumbles
         }
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary including offensive stats."""
-        d = super().to_dict()
-        d.update({
+        """Convert to dictionary for serialization."""
+        data = super().to_dict()
+        data.update({
             "passing_yards": self.passing_yards,
             "rushing_yards": self.rushing_yards,
             "receiving_yards": self.receiving_yards,
-            "touchdowns": self.touchdowns
+            "touchdowns": self.touchdowns,
+            "fumbles": self.fumbles
         })
-        return d
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'OffensivePlayer':
+        """Create OffensivePlayer from dictionary."""
+        player = cls(
+            data.get("name", ""),
+            data.get("team"),
+            data.get("position"),
+            data.get("passing_yards", 0),
+            data.get("rushing_yards", 0),
+            data.get("receiving_yards", 0),
+            data.get("touchdowns", 0),
+            data.get("games_played", 0)
+        )
+        player.fumbles = data.get("fumbles", 0)
+        return player
 
 
 class DefensivePlayer(Player):
-    """Represents defensive players."""
+    """Represents defensive players (DL, LB, CB, S)."""
     
     def __init__(self, name: str, team: Optional[str], position: Optional[str],
                  tackles: int = 0, sacks: int = 0, interceptions: int = 0, 
@@ -130,41 +194,63 @@ class DefensivePlayer(Player):
         self.interceptions = interceptions
         self.forced_fumbles = forced_fumbles
         self.games_played = games_played
+        self.passes_defended = 0  # Additional defensive stat
 
     def efficiency_score(self) -> float:
-        """Calculate defensive efficiency."""
+        """Calculate defensive efficiency based on impact plays."""
         if self.games_played == 0:
             return 0.0
+            
         impact_score = (
             self.tackles * 0.5 +
             self.sacks * 3 +
             self.interceptions * 4 +
-            self.forced_fumbles * 3.5
+            self.forced_fumbles * 3.5 +
+            self.passes_defended * 1.5
         )
+        
         return impact_score / max(self.games_played, 1)
 
     def get_primary_stats(self) -> Dict[str, Any]:
-        """Return defensive statistics."""
+        """Return the most relevant defensive statistics."""
         return {
             "total_tackles": self.tackles,
             "big_plays": self.sacks + self.interceptions + self.forced_fumbles,
-            "tackles_per_game": self.tackles / max(self.games_played, 1)
+            "tackles_per_game": self.tackles / max(self.games_played, 1),
+            "passes_defended": self.passes_defended
         }
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary including defensive stats."""
-        d = super().to_dict()
-        d.update({
+        """Convert to dictionary for serialization."""
+        data = super().to_dict()
+        data.update({
             "tackles": self.tackles,
             "sacks": self.sacks,
             "interceptions": self.interceptions,
-            "forced_fumbles": self.forced_fumbles
+            "forced_fumbles": self.forced_fumbles,
+            "passes_defended": self.passes_defended
         })
-        return d
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'DefensivePlayer':
+        """Create DefensivePlayer from dictionary."""
+        player = cls(
+            data.get("name", ""),
+            data.get("team"),
+            data.get("position"),
+            data.get("tackles", 0),
+            data.get("sacks", 0),
+            data.get("interceptions", 0),
+            data.get("forced_fumbles", 0),
+            data.get("games_played", 0)
+        )
+        player.passes_defended = data.get("passes_defended", 0)
+        return player
 
 
 class SpecialTeamsPlayer(Player):
-    """Represents special teams players."""
+    """Represents special teams players (K, P, Return specialists)."""
     
     def __init__(self, name: str, team: Optional[str], position: Optional[str],
                  field_goals_made: int = 0, field_goals_attempted: int = 0,
@@ -175,50 +261,80 @@ class SpecialTeamsPlayer(Player):
         self.punts_inside_20 = punts_inside_20
         self.return_tds = return_tds
         self.games_played = games_played
+        self.blocked_kicks = 0  # Additional special teams stat
 
     def efficiency_score(self) -> float:
-        """Calculate special teams efficiency."""
+        """Calculate special teams efficiency based on accuracy and impact."""
         if self.games_played == 0:
             return 0.0
+            
         accuracy_bonus = 0
         if self.field_goals_attempted > 0:
             fg_percentage = self.field_goals_made / self.field_goals_attempted
             accuracy_bonus = fg_percentage * 5
+        
         special_score = (
             self.field_goals_made * 2 +
             self.punts_inside_20 * 1.5 +
             self.return_tds * 6 +
+            self.blocked_kicks * 4 +
             accuracy_bonus
         )
+        
         return special_score / max(self.games_played, 1)
 
     def get_primary_stats(self) -> Dict[str, Any]:
-        """Return special teams statistics."""
+        """Return the most relevant special teams statistics."""
         fg_percentage = (self.field_goals_made / max(self.field_goals_attempted, 1)) * 100
         return {
             "field_goals_made": self.field_goals_made,
             "fg_percentage": round(fg_percentage, 1),
             "return_tds": self.return_tds,
-            "punts_inside_20": self.punts_inside_20
+            "punts_inside_20": self.punts_inside_20,
+            "blocked_kicks": self.blocked_kicks
         }
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary including special teams stats."""
-        d = super().to_dict()
-        d.update({
+        """Convert to dictionary for serialization."""
+        data = super().to_dict()
+        data.update({
             "field_goals_made": self.field_goals_made,
             "field_goals_attempted": self.field_goals_attempted,
             "punts_inside_20": self.punts_inside_20,
-            "return_tds": self.return_tds
+            "return_tds": self.return_tds,
+            "blocked_kicks": self.blocked_kicks
         })
-        return d
+        return data
 
-# ============================================================================
-# TEAM & SEASON STATS (Composition)
-# ============================================================================
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SpecialTeamsPlayer':
+        """Create SpecialTeamsPlayer from dictionary."""
+        player = cls(
+            data.get("name", ""),
+            data.get("team"),
+            data.get("position"),
+            data.get("field_goals_made", 0),
+            data.get("field_goals_attempted", 0),
+            data.get("punts_inside_20", 0),
+            data.get("return_tds", 0),
+            data.get("games_played", 0)
+        )
+        player.blocked_kicks = data.get("blocked_kicks", 0)
+        return player
+
+
+class GenericPlayer(Player):
+    """Generic player for unknown positions."""
+    
+    def efficiency_score(self) -> float:
+        return 0.0
+    
+    def get_primary_stats(self) -> Dict[str, Any]:
+        return {"position": self.position, "games_played": self.games_played}
+
 
 class SeasonStats:
-    """Track team-level season statistics."""
+    """Team-level season statistics with persistence capabilities."""
     
     def __init__(self):
         self.wins = 0
@@ -226,18 +342,37 @@ class SeasonStats:
         self.ties = 0
         self.points_scored = 0
         self.points_allowed = 0
+        self.games_log: List[Dict[str, Any]] = []  # Store individual game data
+        self.season_year = 2024
 
-    def add_game_result(self, points_for: int, points_against: int) -> None:
-        """Record the result of a game."""
+    def add_game_result(self, points_for: int, points_against: int, opponent: str = "", week: int = 0) -> None:
+        """Record the result of a game with enhanced tracking."""
         self.points_scored += points_for
         self.points_allowed += points_against
         
+        # Determine result
         if points_for > points_against:
+            result = "W"
             self.wins += 1
         elif points_for < points_against:
+            result = "L"
             self.losses += 1
         else:
+            result = "T"
             self.ties += 1
+        
+        # Log game details
+        game_log = {
+            "week": week if week > 0 else len(self.games_log) + 1,
+            "opponent": opponent,
+            "points_for": points_for,
+            "points_against": points_against,
+            "result": result,
+            "margin": points_for - points_against
+        }
+        self.games_log.append(game_log)
+        
+        logger.info(f"Game added: {result} vs {opponent}, {points_for}-{points_against}")
 
     def win_percentage(self) -> float:
         """Calculate win percentage."""
@@ -251,24 +386,28 @@ class SeasonStats:
         return self.points_scored - self.points_allowed
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for persistence."""
+        """Convert to dictionary for serialization."""
         return {
             "wins": self.wins,
             "losses": self.losses,
             "ties": self.ties,
             "points_scored": self.points_scored,
-            "points_allowed": self.points_allowed
+            "points_allowed": self.points_allowed,
+            "games_log": self.games_log,
+            "season_year": self.season_year
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'SeasonStats':
-        """Create from dictionary."""
+        """Create SeasonStats from dictionary."""
         stats = cls()
         stats.wins = data.get("wins", 0)
         stats.losses = data.get("losses", 0)
         stats.ties = data.get("ties", 0)
         stats.points_scored = data.get("points_scored", 0)
         stats.points_allowed = data.get("points_allowed", 0)
+        stats.games_log = data.get("games_log", [])
+        stats.season_year = data.get("season_year", 2024)
         return stats
 
     def __str__(self) -> str:
@@ -276,7 +415,7 @@ class SeasonStats:
 
 
 class Team:
-    """Team with composition - HAS players and stats."""
+    """Enhanced Team class with data persistence and advanced analytics."""
     
     def __init__(self, name: str, abbreviation: str):
         abbr = abbreviation.upper()
@@ -287,18 +426,24 @@ class Team:
         self.abbreviation = abbr
         self.roster: List[Player] = []
         self.season_stats = SeasonStats()
+        self.last_updated = datetime.now()
+        self.salary_cap = 200000000  # NFL salary cap for realism
+        self.used_cap = 0
 
-    def add_player(self, player: Player) -> None:
-        """Add a player to the team roster."""
+    def add_player(self, player: Player, salary: int = 0) -> None:
+        """Add a player to the team roster with salary tracking."""
         player.team = self.abbreviation
         if player not in self.roster:
             self.roster.append(player)
+            self.used_cap += salary
+            logger.info(f"Added {player.name} to {self.abbreviation} roster")
 
     def remove_player(self, player_name: str) -> bool:
         """Remove a player from the roster by name."""
         for i, player in enumerate(self.roster):
             if player.name.lower() == player_name.lower():
                 del self.roster[i]
+                logger.info(f"Removed {player_name} from {self.abbreviation} roster")
                 return True
         return False
 
@@ -313,160 +458,156 @@ class Team:
         total_efficiency = sum(player.efficiency_score() for player in self.roster)
         return total_efficiency / len(self.roster)
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert team to dictionary for persistence."""
+    def get_team_summary(self) -> Dict[str, Any]:
+        """Get comprehensive team statistics."""
+        if not self.roster:
+            return {"error": "No players on roster"}
+        
+        position_counts = {}
+        for player in self.roster:
+            pos = player.position or "Unknown"
+            position_counts[pos] = position_counts.get(pos, 0) + 1
+        
         return {
-            "name": self.name,
+            "team_name": self.name,
             "abbreviation": self.abbreviation,
-            "roster": [p.to_dict() for p in self.roster],
-            "season_stats": self.season_stats.to_dict()
+            "total_players": len(self.roster),
+            "average_efficiency": round(self.average_efficiency(), 3),
+            "positions": position_counts,
+            "top_player": max(self.roster, key=lambda p: p.efficiency_score()).name if self.roster else None,
+            "salary_cap_used": self.used_cap,
+            "cap_space": self.salary_cap - self.used_cap,
+            "record": str(self.season_stats),
+            "last_updated": self.last_updated.isoformat()
         }
 
+    def save_to_file(self, filepath: Union[str, Path]) -> None:
+        """Save team data to JSON file."""
+        try:
+            filepath = Path(filepath)
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            
+            team_data = {
+                "name": self.name,
+                "abbreviation": self.abbreviation,
+                "roster": [player.to_dict() for player in self.roster],
+                "season_stats": self.season_stats.to_dict(),
+                "salary_cap": self.salary_cap,
+                "used_cap": self.used_cap,
+                "last_updated": self.last_updated.isoformat()
+            }
+            
+            with open(filepath, 'w') as f:
+                json.dump(team_data, f, indent=2)
+            
+            logger.info(f"Team {self.abbreviation} saved to {filepath}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save team {self.abbreviation}: {e}")
+            raise DataPersistenceError(f"Could not save team data: {e}")
+
+    @classmethod
+    def load_from_file(cls, filepath: Union[str, Path]) -> 'Team':
+        """Load team data from JSON file."""
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+            
+            team = cls(data["name"], data["abbreviation"])
+            team.salary_cap = data.get("salary_cap", 200000000)
+            team.used_cap = data.get("used_cap", 0)
+            
+            # Load roster
+            for player_data in data.get("roster", []):
+                player = Player.from_dict(player_data)
+                team.roster.append(player)
+            
+            # Load season stats
+            if "season_stats" in data:
+                team.season_stats = SeasonStats.from_dict(data["season_stats"])
+            
+            # Update timestamp
+            if "last_updated" in data:
+                team.last_updated = datetime.fromisoformat(data["last_updated"])
+            
+            logger.info(f"Team {team.abbreviation} loaded from {filepath}")
+            return team
+            
+        except FileNotFoundError:
+            logger.error(f"Team file not found: {filepath}")
+            raise DataPersistenceError(f"Team file not found: {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to load team from {filepath}: {e}")
+            raise DataPersistenceError(f"Could not load team data: {e}")
+
     def __str__(self) -> str:
-        return f"{self.name} ({self.abbreviation}) - {len(self.roster)} players"
+        return f"{self.name} ({self.abbreviation}) — {len(self.roster)} players"
 
     def __len__(self) -> int:
         return len(self.roster)
 
-# ============================================================================
-# DATA PERSISTENCE MODULE (NEW)
-# ============================================================================
-
-class PersistanceManager: 
-    """Handles saving and loading system state."""
-
-    @staticmethod
-    def save_teams_json(teams: List[Team], filepath: Path) -> None:
-        """Save teams to JSON fuke with error handling"""
-        try: 
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-            data = {
-                "teams": [team.to_dict() for team in teams],
-                "count": len(teams)
-            }
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2)
-            print(f" Saved {len(teams)} teams to {filepath}")
-        except IOError as e:
-            raise IOError(f"Failed to save teams: {e}")
-
-    @staticmethod
-    def load_teams_json(filepath: Path) -> List[Team]:
-        """Load teams from JSON file with error handling."""
-        try:
-            if not filepath.exists():
-                raise FileNotFoundError(f"File not found: {filepath}")
-            
-            with open(filepath, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            teams = []
-            for team_data in data.get("teams", []):
-                team = Team(team_data["name"], team_data["abbreviation"])
-                team.season_stats = SeasonStats.from_dict(team_data["season_stats"])
-                
-                # Recreate players based on type
-                for player_data in team_data.get("roster", []):
-                    player = PersistenceManager._create_player_from_dict(player_data)
-                    team.add_player(player)
-                
-                teams.append(team)
-            
-            print(f" Loaded {len(teams)} teams from {filepath}")
-            return teams
-            
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON format: {e}")
-        except IOError as e:
-            raise IOError(f"Failed to load teams: {e}")
-
-    @staticmethod
-    def _create_player_from_dict(data: Dict[str, Any]) -> Player:
-        """Factory method to create player from dictionary."""
-        player_type = data.get("player_type", "OffensivePlayer")
-        name = data["name"]
-        team = data.get("team")
-        position = data.get("position")
-        games = data.get("games_played", 0)
-        
-        if player_type == "OffensivePlayer":
-            return OffensivePlayer(
-                name, team, position,
-                passing_yards=data.get("passing_yards", 0),
-                rushing_yards=data.get("rushing_yards", 0),
-                receiving_yards=data.get("receiving_yards", 0),
-                touchdowns=data.get("touchdowns", 0),
-                games_played=games
-            )
-        elif player_type == "DefensivePlayer":
-            return DefensivePlayer(
-                name, team, position,
-                tackles=data.get("tackles", 0),
-                sacks=data.get("sacks", 0),
-                interceptions=data.get("interceptions", 0),
-                forced_fumbles=data.get("forced_fumbles", 0),
-                games_played=games
-            )
-        elif player_type == "SpecialTeamsPlayer":
-            return SpecialTeamsPlayer(
-                name, team, position,
-                field_goals_made=data.get("field_goals_made", 0),
-                field_goals_attempted=data.get("field_goals_attempted", 0),
-                punts_inside_20=data.get("punts_inside_20", 0),
-                return_tds=data.get("return_tds", 0),
-                games_played=games
-            )
-        else:
-            # Fallback to offensive player
-            return OffensivePlayer(name, team, position, games_played=games)
-
-    @staticmethod
-    def export_leaderboard_csv(df: pd.DataFrame, filepath: Path) -> None:
-        """Export leaderboard to CSV."""
-        try:
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-            df.to_csv(filepath, index=False)
-            print(f" Exported leaderboard to {filepath}")
-        except IOError as e:
-            raise IOError(f"Failed to export CSV: {e}")
-
-    @staticmethod
-    def import_players_csv(filepath: Path) -> pd.DataFrame:
-        """Import player data from CSV."""
-        try:
-            if not filepath.exists():
-                raise FileNotFoundError(f"CSV file not found: {filepath}")
-            
-            df = pd.read_csv(filepath)
-            required_cols = ["player", "team", "position"]
-            missing = [col for col in required_cols if col not in df.columns]
-            if missing:
-                raise ValueError(f"CSV missing required columns: {missing}")
-            
-            print(f" Imported {len(df)} players from {filepath}")
-            return df
-            
-        except pd.errors.EmptyDataError:
-            raise ValueError("CSV file is empty")
-        except IOError as e:
-            raise IOError(f"Failed to import CSV: {e}")
-
-# ============================================================================
-# DATA MANAGEMENT & ANALYTICS
-# ============================================================================
 
 class StatsDataset:
-    """Handles loading and processing of player statistics data."""
+    """Enhanced data management with comprehensive I/O capabilities."""
     
     def __init__(self, df: pd.DataFrame):
         self._df = df
         self._validate_dataframe()
+        self.import_history: List[Dict[str, Any]] = []
 
     @classmethod
-    def from_csv(cls, path: Path) -> 'StatsDataset':
-        """Create dataset from CSV file."""
-        df = PersistenceManager.import_players_csv(path)
-        return cls(df)
+    def from_csv(cls, path: Union[str, Path]) -> 'StatsDataset':
+        """Create dataset from CSV file with error handling."""
+        try:
+            filepath = Path(path)
+            df = pd.read_csv(filepath)
+            dataset = cls(df)
+            dataset.import_history.append({
+                "file": str(filepath),
+                "timestamp": datetime.now().isoformat(),
+                "rows": len(df),
+                "type": "csv"
+            })
+            logger.info(f"Successfully imported {len(df)} rows from {filepath}")
+            return dataset
+        except FileNotFoundError:
+            logger.error(f"CSV file not found: {path}")
+            raise DataPersistenceError(f"Could not find stats file: {path}")
+        except pd.errors.EmptyDataError:
+            logger.error(f"CSV file is empty: {path}")
+            raise DataPersistenceError("The CSV file is empty")
+        except Exception as e:
+            logger.error(f"Failed to read CSV {path}: {e}")
+            raise DataPersistenceError(f"Could not read CSV file: {e}")
+
+    @classmethod
+    def from_json(cls, path: Union[str, Path]) -> 'StatsDataset':
+        """Create dataset from JSON file."""
+        try:
+            with open(path, 'r') as f:
+                data = json.load(f)
+            
+            # Convert JSON to DataFrame
+            if isinstance(data, list):
+                df = pd.DataFrame(data)
+            elif isinstance(data, dict) and 'players' in data:
+                df = pd.DataFrame(data['players'])
+            else:
+                raise ValueError("Unsupported JSON format")
+            
+            dataset = cls(df)
+            dataset.import_history.append({
+                "file": str(Path(path)),
+                "timestamp": datetime.now().isoformat(),
+                "rows": len(df),
+                "type": "json"
+            })
+            logger.info(f"Successfully imported {len(df)} rows from JSON: {path}")
+            return dataset
+            
+        except Exception as e:
+            logger.error(f"Failed to read JSON {path}: {e}")
+            raise DataPersistenceError(f"Could not read JSON file: {e}")
 
     def _validate_dataframe(self) -> None:
         """Validate that the dataframe has required columns."""
@@ -474,6 +615,15 @@ class StatsDataset:
         missing_cols = [col for col in required_cols if col not in self._df.columns]
         if missing_cols:
             raise ValueError(f"Missing required columns: {missing_cols}")
+        
+        # Additional validation
+        if len(self._df) == 0:
+            raise ValueError("Dataset is empty")
+        
+        # Validate team abbreviations
+        invalid_teams = set(self._df["team"].str.upper()) - VALID_TEAMS
+        if invalid_teams:
+            logger.warning(f"Found invalid team abbreviations: {invalid_teams}")
 
     def create_player_from_row(self, row: pd.Series) -> Player:
         """Factory method to create appropriate Player subclass."""
@@ -495,7 +645,7 @@ class StatsDataset:
             return DefensivePlayer(
                 name, team, pos,
                 tackles=int(row.get("tackles", 0)),
-                sacks=int(row.get("sacks", 0)),
+                sacks=float(row.get("sacks", 0)),  # Sacks can be fractional
                 interceptions=int(row.get("interceptions", 0)),
                 forced_fumbles=int(row.get("forced_fumbles", 0)),
                 games_played=games
@@ -510,7 +660,7 @@ class StatsDataset:
                 games_played=games
             )
         else:
-            return OffensivePlayer(name, team, pos, games_played=games)
+            return GenericPlayer(name, team, pos)
 
     def build_team_roster(self, team_abbr: str) -> Team:
         """Build a complete team roster from the dataset."""
@@ -519,7 +669,10 @@ class StatsDataset:
             raise ValueError(f"Invalid team abbreviation: {team_abbr}")
         
         team_df = self._df[self._df["team"].str.upper() == team_abbr]
-        team = Team(f"{team_abbr} Team", team_abbr)
+        
+        # Get full team name if available
+        team_name = TEAM_NAMES.get(team_abbr, f"{team_abbr} Team")
+        team = Team(team_name, team_abbr)
 
         seen_players = set()
         for _, row in team_df.iterrows():
@@ -531,11 +684,151 @@ class StatsDataset:
             player = self.create_player_from_row(row)
             team.add_player(player)
 
+        logger.info(f"Built roster for {team_name}: {len(team.roster)} players")
         return team
+
+    def get_all_teams(self) -> List[str]:
+        """Get list of all teams in the dataset."""
+        return sorted(self._df["team"].str.upper().unique())
+
+    def export_to_csv(self, filepath: Union[str, Path], teams: Optional[List[Team]] = None) -> None:
+        """Export team data to CSV file."""
+        try:
+            if teams:
+                # Export specific teams
+                all_players = []
+                for team in teams:
+                    for player in team.roster:
+                        all_players.append(player.to_dict())
+                df = pd.DataFrame(all_players)
+            else:
+                # Export all data
+                df = self._df.copy()
+            
+            filepath = Path(filepath)
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(filepath, index=False)
+            logger.info(f"Exported data to CSV: {filepath}")
+            
+        except Exception as e:
+            logger.error(f"Failed to export to CSV {filepath}: {e}")
+            raise DataPersistenceError(f"Could not export to CSV: {e}")
+
+
+class NFLAnalyticsSystem:
+    """Main system class that ties everything together."""
+    
+    def __init__(self):
+        self.teams: Dict[str, Team] = {}
+        self.datasets: List[StatsDataset] = []
+        self.system_data_path = Path("nfl_data")
+        self.system_data_path.mkdir(exist_ok=True)
+        
+    def load_team_data(self, team_abbr: str) -> Team:
+        """Load team data from file or create new team."""
+        team_file = self.system_data_path / f"{team_abbr.lower()}_team.json"
+        
+        if team_file.exists():
+            try:
+                team = Team.load_from_file(team_file)
+                self.teams[team_abbr] = team
+                logger.info(f"Loaded existing team data for {team_abbr}")
+                return team
+            except DataPersistenceError:
+                logger.warning(f"Failed to load team file for {team_abbr}, creating new team")
+        
+        # Create new team if file doesn't exist or loading failed
+        team_name = TEAM_NAMES.get(team_abbr.upper(), f"{team_abbr.upper()} Team")
+        team = Team(team_name, team_abbr.upper())
+        self.teams[team_abbr.upper()] = team
+        return team
+
+    def save_all_teams(self) -> None:
+        """Save all teams to individual files."""
+        for team_abbr, team in self.teams.items():
+            team_file = self.system_data_path / f"{team_abbr.lower()}_team.json"
+            try:
+                team.save_to_file(team_file)
+            except DataPersistenceError as e:
+                logger.error(f"Failed to save team {team_abbr}: {e}")
+
+    def import_weekly_stats(self, csv_path: Union[str, Path]) -> None:
+        """Import new weekly stats and update existing teams."""
+        try:
+            dataset = StatsDataset.from_csv(csv_path)
+            self.datasets.append(dataset)
+            
+            # Update existing teams with new data
+            for team_abbr in dataset.get_all_teams():
+                if team_abbr in self.teams:
+                    # Update existing team
+                    team = self.teams[team_abbr]
+                    # Here you could implement logic to update player stats
+                    logger.info(f"Updated stats for existing team {team_abbr}")
+                else:
+                    # Create new team
+                    team = dataset.build_team_roster(team_abbr)
+                    self.teams[team_abbr] = team
+                    logger.info(f"Created new team {team_abbr} from weekly stats")
+                    
+        except Exception as e:
+            logger.error(f"Failed to import weekly stats: {e}")
+            raise
+
+    def generate_league_report(self, output_path: Union[str, Path]) -> None:
+        """Generate comprehensive league analysis report."""
+        try:
+            report_data = {
+                "generation_time": datetime.now().isoformat(),
+                "total_teams": len(self.teams),
+                "team_rankings": [],
+                "top_players_by_position": {},
+                "league_stats": {}
+            }
+            
+            # Team rankings
+            teams_list = list(self.teams.values())
+            if teams_list:
+                team_rankings = AnalyticsEngine.rank_teams(teams_list)
+                report_data["team_rankings"] = team_rankings.to_dict('records')
+            
+            # Top players by position
+            all_players = []
+            for team in teams_list:
+                all_players.extend(team.roster)
+            
+            for pos in ["QB", "RB", "WR", "TE", "LB", "CB", "S", "K"]:
+                pos_players = [p for p in all_players if p.position == pos]
+                if pos_players:
+                    top_players = AnalyticsEngine.rank_players(pos_players, top_n=5)
+                    report_data["top_players_by_position"][pos] = top_players.to_dict('records')
+            
+            # League statistics
+            total_players = sum(len(team.roster) for team in teams_list)
+            avg_team_efficiency = sum(team.average_efficiency() for team in teams_list) / len(teams_list) if teams_list else 0
+            
+            report_data["league_stats"] = {
+                "total_players": total_players,
+                "average_team_efficiency": round(avg_team_efficiency, 3),
+                "teams_with_winning_records": len([t for t in teams_list if t.season_stats.win_percentage() > 0.5])
+            }
+            
+            # Save report
+            output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(output_path, 'w') as f:
+                json.dump(report_data, f, indent=2)
+            
+            logger.info(f"Generated league report: {output_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to generate league report: {e}")
+            raise DataPersistenceError(f"Could not generate report: {e}")
 
 
 class AnalyticsEngine:
-    """Provides statistical analysis and ranking functionality."""
+    """Enhanced analytics with export capabilities."""
     
     @staticmethod
     def rank_players(players: List[Player], top_n: int = 5) -> pd.DataFrame:
@@ -572,7 +865,9 @@ class AnalyticsEngine:
                 "team_name": team.name,
                 "avg_efficiency": round(team.average_efficiency(), 3),
                 "players": len(team.roster),
-                "win_pct": round(team.season_stats.win_percentage(), 3)
+                "record": str(team.season_stats),
+                "point_differential": team.season_stats.point_differential(),
+                "top_player_score": round(max([p.efficiency_score() for p in team.roster], default=0), 3)
             })
         
         df = pd.DataFrame(team_data).sort_values("avg_efficiency", ascending=False)
@@ -581,167 +876,178 @@ class AnalyticsEngine:
         
         return df
 
-# ============================================================================
-# MAIN APPLICATION CLASS
-# ============================================================================
+    @staticmethod
+    def export_rankings_report(teams: List[Team], output_path: Union[str, Path]) -> None:
+        """Export comprehensive rankings to CSV."""
+        try:
+            # Team rankings
+            team_rankings = AnalyticsEngine.rank_teams(teams)
+            
+            # Player rankings
+            all_players = []
+            for team in teams:
+                all_players.extend(team.roster)
+            player_rankings = AnalyticsEngine.rank_players(all_players, top_n=50)
+            
+            # Create multi-sheet report structure
+            output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # For CSV, we'll create separate files
+            base_name = output_path.stem
+            output_dir = output_path.parent
+            
+            team_rankings.to_csv(output_dir / f"{base_name}_team_rankings.csv", index=False)
+            player_rankings.to_csv(output_dir / f"{base_name}_player_rankings.csv", index=False)
+            
+            logger.info(f"Exported rankings reports to {output_dir}")
+            
+        except Exception as e:
+            logger.error(f"Failed to export rankings: {e}")
+            raise DataPersistenceError(f"Could not export rankings: {e}")
 
-class NFLAnalyticsApp:
-    """Main application class orchestrating the complete system."""
-    
-    def __init__(self):
-        self.teams: List[Team] = []
-        self.persistence = PersistenceManager()
-    
-    def load_from_csv(self, csv_path: Path) -> None:
-        """Load initial data from CSV."""
-        dataset = StatsDataset.from_csv(csv_path)
-        
-        # Get unique teams and build rosters
-        team_abbrs = dataset._df["team"].str.upper().unique()
-        for abbr in team_abbrs:
-            if abbr in VALID_TEAMS:
-                team = dataset.build_team_roster(abbr)
-                self.teams.append(team)
-        
-        print(f" Loaded {len(self.teams)} teams from CSV")
-    
-    def save_state(self, filepath: Path) -> None:
-        """Save current application state."""
-        self.persistence.save_teams_json(self.teams, filepath)
-    
-    def load_state(self, filepath: Path) -> None:
-        """Load application state from file."""
-        self.teams = self.persistence.load_teams_json(filepath)
-    
-    def export_report(self, output_dir: Path) -> None:
-        """Generate and export comprehensive reports."""
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Team rankings
-        team_rankings = AnalyticsEngine.rank_teams(self.teams)
-        self.persistence.export_leaderboard_csv(
-            team_rankings, 
-            output_dir / "team_rankings.csv"
-        )
-        
-        # Top players overall
-        all_players = []
-        for team in self.teams:
-            all_players.extend(team.roster)
-        
-        player_rankings = AnalyticsEngine.rank_players(all_players, top_n=20)
-        self.persistence.export_leaderboard_csv(
-            player_rankings,
-            output_dir / "player_rankings.csv"
-        )
-        
-        print(f" Exported reports to {output_dir}")
-    
-    def get_team(self, abbreviation: str) -> Optional[Team]:
-        """Get team by abbreviation."""
-        abbr = abbreviation.upper()
-        for team in self.teams:
-            if team.abbreviation == abbr:
-                return team
-        return None
+    @staticmethod
+    def compare_positions(players: List[Player], position: str) -> pd.DataFrame:
+        """Compare players at the same position."""
+        position_players = [p for p in players if p.position == position.upper()]
+        return AnalyticsEngine.rank_players(position_players, len(position_players))
 
+    @staticmethod
+    def team_position_analysis(team: Team) -> Dict[str, Any]:
+        """Analyze team composition by position."""
+        analysis = {}
+        
+        for pos in ["QB", "RB", "WR", "TE", "DL", "LB", "CB", "S", "K", "P"]:
+            pos_players = team.get_players_by_position(pos)
+            if pos_players:
+                avg_efficiency = sum(p.efficiency_score() for p in pos_players) / len(pos_players)
+                analysis[pos] = {
+                    "count": len(pos_players),
+                    "avg_efficiency": round(avg_efficiency, 3),
+                    "best_player": max(pos_players, key=lambda p: p.efficiency_score()).name
+                }
+        
+        return analysis
 
-# ============================================================================
-# DEMONSTRATION
-# ============================================================================
 
 def create_sample_data() -> pd.DataFrame:
-    """Create sample NFL player data for demonstration."""
+    """Create enhanced sample NFL player data."""
     sample_data = {
         "player": [
             "Josh Allen", "Stefon Diggs", "Jordan Poyer", "Matt Milano",
-            "Tyler Bass", "Aaron Donald", "Cooper Kupp", "Matthew Stafford"
+            "Tyler Bass", "Matt Haack", "Aaron Donald", "Cooper Kupp",
+            "Jalen Ramsey", "Matthew Stafford", "Von Miller", "Dawson Knox"
         ],
-        "team": ["BUF", "BUF", "BUF", "BUF", "BUF", "LAR", "LAR", "LAR"],
-        "position": ["QB", "WR", "S", "LB", "K", "DL", "WR", "QB"],
-        "games_played": [17, 16, 15, 14, 17, 16, 15, 17],
-        "passing_yards": [4306, 0, 0, 0, 0, 0, 0, 4886],
-        "rushing_yards": [524, 3, 0, 0, 0, 0, 8, 43],
-        "receiving_yards": [0, 1429, 0, 0, 0, 0, 1947, 0],
-        "touchdowns": [42, 11, 1, 0, 0, 0, 8, 41],
-        "tackles": [0, 12, 93, 92, 0, 84, 4, 0],
-        "sacks": [0, 0, 1, 3, 0, 20.5, 0, 0],
-        "interceptions": [0, 0, 5, 1, 0, 0, 0, 0],
-        "forced_fumbles": [0, 0, 2, 1, 0, 4, 0, 0],
-        "field_goals_made": [0, 0, 0, 0, 28, 0, 0, 0],
-        "field_goals_attempted": [0, 0, 0, 0, 32, 0, 0, 0],
-        "punts_inside_20": [0, 0, 0, 0, 0, 0, 0, 0],
-        "return_tds": [0, 0, 0, 0, 0, 0, 0, 0]
+        "team": [
+            "BUF", "BUF", "BUF", "BUF", "BUF", "BUF", 
+            "LAR", "LAR", "LAR", "LAR", "BUF", "BUF"
+        ],
+        "position": [
+            "QB", "WR", "S", "LB", "K", "P", 
+            "DL", "WR", "CB", "QB", "LB", "TE"
+        ],
+        "games_played": [17, 16, 15, 14, 17, 17, 16, 15, 16, 17, 11, 16],
+        "passing_yards": [4306, 0, 0, 0, 0, 0, 0, 0, 0, 4886, 0, 0],
+        "rushing_yards": [524, 3, 0, 0, 0, 0, 0, 8, 0, 43, 0, 0],
+        "receiving_yards": [0, 1429, 0, 0, 0, 0, 0, 1947, 0, 0, 0, 517],
+        "touchdowns": [42, 11, 1, 0, 0, 0, 0, 8, 0, 41, 0, 5],
+        "tackles": [0, 12, 93, 92, 0, 0, 84, 4, 77, 0, 42, 0],
+        "sacks": [0, 0, 1, 3, 0, 0, 20.5, 0, 0, 0, 8, 0],
+        "interceptions": [0, 0, 5, 1, 0, 0, 0, 0, 4, 0, 0, 0],
+        "forced_fumbles": [0, 0, 2, 1, 0, 0, 4, 0, 1, 0, 2, 0],
+        "field_goals_made": [0, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0],
+        "field_goals_attempted": [0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0],
+        "punts_inside_20": [0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0],
+        "return_tds": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     }
     
     return pd.DataFrame(sample_data)
 
 
 def main():
-    """Demonstrate the complete NFL Analytics system."""
-    print(" NFL Analytics System - Project 4 Demo")
+    """Demonstrate the enhanced NFL Analytics system."""
+    print("NFL Analytics System - Project 4 Capstone Demo")
     print("=" * 60)
     
-    # Create sample data and save to CSV
-    sample_df = create_sample_data()
-    data_dir = Path("data")
-    data_dir.mkdir(exist_ok=True)
-    sample_df.to_csv(data_dir / "sample_players.csv", index=False)
-    
-    # Initialize application
-    app = NFLAnalyticsApp()
-    
-    # Load data from CSV
-    print("\n Loading player data from CSV...")
-    app.load_from_csv(data_dir / "sample_players.csv")
-    
-    # Add some game results
-    bills = app.get_team("BUF")
-    rams = app.get_team("LAR")
-    
-    if bills:
-        bills.season_stats.add_game_result(31, 10)
-        bills.season_stats.add_game_result(28, 25)
-        print(f"\n{bills}")
-        print(f"Season: {bills.season_stats}")
-    
-    if rams:
-        rams.season_stats.add_game_result(24, 20)
-        rams.season_stats.add_game_result(30, 22)
-        print(f"\n{rams}")
-        print(f"Season: {rams.season_stats}")
-    
-    # Save application state
-    print("\n Saving application state...")
-    save_path = data_dir / "nfl_system_state.json"
-    app.save_state(save_path)
-    
-    # Export reports
-    print("\n Generating reports...")
-    reports_dir = Path("reports")
-    app.export_report(reports_dir)
-    
-    # Demonstrate loading state
-    print("\n Testing state reload...")
-    new_app = NFLAnalyticsApp()
-    new_app.load_state(save_path)
-    print(f"Reloaded {len(new_app.teams)} teams successfully")
-    
-    # Display analytics
-    print("\n Team Rankings:")
-    team_rankings = AnalyticsEngine.rank_teams(new_app.teams)
-    print(team_rankings.to_string(index=False))
-    
-    print("\n Top Players:")
-    all_players = []
-    for team in new_app.teams:
-        all_players.extend(team.roster)
-    player_rankings = AnalyticsEngine.rank_players(all_players, top_n=8)
-    print(player_rankings.to_string(index=False))
-    
-    print("\n Project 4 demonstration complete!")
-    print(f"   - Data persisted to: {save_path}")
-    print(f"   - Reports exported to: {reports_dir}")
+    try:
+        # Initialize the main system
+        nfl_system = NFLAnalyticsSystem()
+        
+        # Create and save sample data
+        print("Creating Sample Dataset...")
+        df = create_sample_data()
+        sample_dataset = StatsDataset(df)
+        
+        # Export sample data for demonstration
+        sample_data_path = nfl_system.system_data_path / "sample_stats.csv"
+        sample_dataset.export_to_csv(sample_data_path)
+        print(f"Sample data exported to: {sample_data_path}")
+        
+        # Build teams and demonstrate persistence
+        print("Building and Saving Teams...")
+        bills = sample_dataset.build_team_roster("BUF")
+        rams = sample_dataset.build_team_roster("LAR")
+        
+        # Add some game results
+        bills.season_stats.add_game_result(31, 10, "LAR", 1)
+        bills.season_stats.add_game_result(28, 25, "KC", 2)
+        bills.season_stats.add_game_result(17, 20, "NE", 3)
+        
+        rams.season_stats.add_game_result(10, 31, "BUF", 1)
+        rams.season_stats.add_game_result(24, 17, "SF", 2)
+        
+        # Save teams to files
+        nfl_system.teams["BUF"] = bills
+        nfl_system.teams["LAR"] = rams
+        nfl_system.save_all_teams()
+        print("Teams saved to persistent storage")
+        
+        # Demonstrate loading teams
+        print("\n📂 Testing Data Persistence...")
+        loaded_bills = nfl_system.load_team_data("BUF")
+        print(f"Loaded {loaded_bills.name}: {len(loaded_bills.roster)} players")
+        print(f"Season record: {loaded_bills.season_stats}")
+        
+        # Generate analytics and rankings
+        print("Generating Analytics...")
+        all_players = bills.roster + rams.roster
+        player_rankings = AnalyticsEngine.rank_players(all_players, top_n=10)
+        team_rankings = AnalyticsEngine.rank_teams([bills, rams])
+        
+        print("\nTop 10 Players:")
+        print(player_rankings.to_string(index=False))
+        
+        print("\nTeam Rankings:")
+        print(team_rankings.to_string(index=False))
+        
+        # Export reports
+        print("Exporting Reports...")
+        reports_dir = nfl_system.system_data_path / "reports"
+        reports_dir.mkdir(exist_ok=True)
+        
+        # Export rankings
+        rankings_path = reports_dir / "weekly_rankings.csv"
+        AnalyticsEngine.export_rankings_report([bills, rams], rankings_path)
+        
+        # Generate league report
+        league_report_path = reports_dir / "league_report.json"
+        nfl_system.generate_league_report(league_report_path)
+        
+        print(f"Reports exported to: {reports_dir}")
+        
+        # Demonstrate position analysis
+        print("Position Analysis Example:")
+        bills_analysis = AnalyticsEngine.team_position_analysis(bills)
+        for pos, data in bills_analysis.items():
+            print(f"{pos}: {data['count']} players, avg efficiency: {data['avg_efficiency']}")
+        
+        print("System demonstration complete!")
+        print(f"All data saved to: {nfl_system.system_data_path}")
+        
+    except Exception as e:
+        logger.error(f"System demo failed: {e}")
+        print(f" Demo failed: {e}")
+        raise
 
 
 if __name__ == "__main__":
