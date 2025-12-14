@@ -51,16 +51,14 @@ Our NFL Analytics System is a complete, professional-grade application that demo
 ```
 nfl-analytics-capstone/
 │
-├── nfl_analytics_capstone.py           # Main system implementation
-├── test_nfl_analytics_capstone.py      # Comprehensive test suite
-├── requirements.txt                    # Project dependencies
+├── nfl_analytics_capstone.py          # Main system implementation
+├── test_nfl_analytics_capstone.py     # Comprehensive test suite
 ├── README.md                          # This file
 ├── sample_data.csv                    # Sample NFL player data
 │
 ├── docs/
-│   ├── Architecture_Document.md       # Technical design decisions
+│   ├── Architecture_Document.md      # Technical design decisions
 │   ├── Testing_Strategy.md           # Testing approach and coverage
-│   └── API_Documentation.md          # Interface and usage guide
 │
 ├── nfl_data/                         # Generated data directory
 │   ├── buf_team.json                 # Team save files
