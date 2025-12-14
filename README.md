@@ -96,7 +96,7 @@ python test_nfl_analytics_capstone.py
 
 ---
 
-## 💻 Usage Examples
+##Usage Examples
 
 ### Basic Team Analysis
 ```python
@@ -209,7 +209,7 @@ Our system can process actual NFL statistics:
 
 **Sample Analysis Output:**
 ```
- NFL Analytics System - Week 12 Results
+ NFL Analytics System Result
 ═══════════════════════════════════════════
 
 Team Rankings:
