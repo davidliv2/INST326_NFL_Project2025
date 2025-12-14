@@ -450,3 +450,133 @@ class PersistanceManager:
             raise ValueError("CSV file is empty")
         except IOError as e:
             raise IOError(f"Failed to import CSV: {e}")
+
+# ============================================================================
+# DATA MANAGEMENT & ANALYTICS
+# ============================================================================
+
+class StatsDataset:
+    """Handles loading and processing of player statistics data."""
+    
+    def __init__(self, df: pd.DataFrame):
+        self._df = df
+        self._validate_dataframe()
+
+    @classmethod
+    def from_csv(cls, path: Path) -> 'StatsDataset':
+        """Create dataset from CSV file."""
+        df = PersistenceManager.import_players_csv(path)
+        return cls(df)
+
+    def _validate_dataframe(self) -> None:
+        """Validate that the dataframe has required columns."""
+        required_cols = ["player", "team", "position"]
+        missing_cols = [col for col in required_cols if col not in self._df.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns: {missing_cols}")
+
+    def create_player_from_row(self, row: pd.Series) -> Player:
+        """Factory method to create appropriate Player subclass."""
+        name = clean_name(row.get("player", ""))
+        team = row.get("team")
+        pos = str(row.get("position", "")).upper()
+        games = int(row.get("games_played", 0))
+
+        if pos in {"QB", "RB", "WR", "TE"}:
+            return OffensivePlayer(
+                name, team, pos,
+                passing_yards=int(row.get("passing_yards", 0)),
+                rushing_yards=int(row.get("rushing_yards", 0)),
+                receiving_yards=int(row.get("receiving_yards", 0)),
+                touchdowns=int(row.get("touchdowns", 0)),
+                games_played=games
+            )
+        elif pos in {"DL", "LB", "CB", "S", "DE", "DT", "OLB", "MLB", "FS", "SS"}:
+            return DefensivePlayer(
+                name, team, pos,
+                tackles=int(row.get("tackles", 0)),
+                sacks=int(row.get("sacks", 0)),
+                interceptions=int(row.get("interceptions", 0)),
+                forced_fumbles=int(row.get("forced_fumbles", 0)),
+                games_played=games
+            )
+        elif pos in {"K", "P", "KR", "PR"}:
+            return SpecialTeamsPlayer(
+                name, team, pos,
+                field_goals_made=int(row.get("field_goals_made", 0)),
+                field_goals_attempted=int(row.get("field_goals_attempted", 0)),
+                punts_inside_20=int(row.get("punts_inside_20", 0)),
+                return_tds=int(row.get("return_tds", 0)),
+                games_played=games
+            )
+        else:
+            return OffensivePlayer(name, team, pos, games_played=games)
+
+    def build_team_roster(self, team_abbr: str) -> Team:
+        """Build a complete team roster from the dataset."""
+        team_abbr = team_abbr.upper()
+        if team_abbr not in VALID_TEAMS:
+            raise ValueError(f"Invalid team abbreviation: {team_abbr}")
+        
+        team_df = self._df[self._df["team"].str.upper() == team_abbr]
+        team = Team(f"{team_abbr} Team", team_abbr)
+
+        seen_players = set()
+        for _, row in team_df.iterrows():
+            player_name = clean_name(row.get("player"))
+            if player_name in seen_players:
+                continue
+            
+            seen_players.add(player_name)
+            player = self.create_player_from_row(row)
+            team.add_player(player)
+
+        return team
+
+
+class AnalyticsEngine:
+    """Provides statistical analysis and ranking functionality."""
+    
+    @staticmethod
+    def rank_players(players: List[Player], top_n: int = 5) -> pd.DataFrame:
+        """Rank players by efficiency score."""
+        if not players:
+            return pd.DataFrame(columns=["rank", "player", "position", "team", "score"])
+        
+        player_data = []
+        for player in players:
+            player_data.append({
+                "player": player.name,
+                "position": player.position,
+                "team": player.team,
+                "score": round(player.efficiency_score(), 3),
+                "games_played": player.games_played
+            })
+        
+        df = pd.DataFrame(player_data).sort_values("score", ascending=False).head(top_n)
+        df.reset_index(drop=True, inplace=True)
+        df.insert(0, "rank", range(1, len(df) + 1))
+        
+        return df
+
+    @staticmethod
+    def rank_teams(teams: List[Team]) -> pd.DataFrame:
+        """Rank teams by average player efficiency."""
+        if not teams:
+            return pd.DataFrame(columns=["rank", "team", "avg_efficiency", "players"])
+        
+        team_data = []
+        for team in teams:
+            team_data.append({
+                "team": team.abbreviation,
+                "team_name": team.name,
+                "avg_efficiency": round(team.average_efficiency(), 3),
+                "players": len(team.roster),
+                "win_pct": round(team.season_stats.win_percentage(), 3)
+            })
+        
+        df = pd.DataFrame(team_data).sort_values("avg_efficiency", ascending=False)
+        df.reset_index(drop=True, inplace=True)
+        df.insert(0, "rank", range(1, len(df) + 1))
+        
+        return df
