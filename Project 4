@@ -329,7 +329,7 @@ class Team:
         return len(self.roster)
 
 # ============================================================================
-# DATA PERSISTENCE MODULE (NEW FOR PROJECT 4)
+# DATA PERSISTENCE MODULE (NEW)
 # ============================================================================
 
 class PersistanceManager: 
