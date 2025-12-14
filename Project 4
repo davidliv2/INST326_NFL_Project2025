@@ -8,3 +8,207 @@ Complete system integrating Projects 1-3 with data persistence,
 I/O capabilities and comprehensive testing.
 """
 
+from __future__ import annotations
+from typing import List, Optional, Dict, Any
+from abc import ABC, abstractmethod
+from pathlib import Path
+import pandas as pd
+import json
+import csv
+
+# ============================================================================
+# CORE PLAYER CLASSES (From Project 3 - Inheritance & Polymorphism)
+# ============================================================================
+
+def clean_name(name: str) -> str:
+    """Clean and standardize player names."""
+    return str(name).strip()
+
+VALID_TEAMS = {
+    "ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE","DAL","DEN","DET","GB",
+    "HOU","IND","JAX","KC","LV","LAC","LAR","MIA","MIN","NE","NO","NYG","NYJ",
+    "PHI","PIT","SEA","SF","TB","TEN","WAS"
+}
+
+class Player(ABC):
+    """Abstract base class for all NFL players."""
+    
+    def __init__(self, name: str, team: Optional[str], position: Optional[str]):
+        self.name = clean_name(name)
+        self.team = team
+        self.position = position
+        self.games_played = 0
+
+    @abstractmethod
+    def efficiency_score(self) -> float:
+        """Calculate player efficiency score."""
+        pass
+
+    @abstractmethod
+    def get_primary_stats(self) -> Dict[str, Any]:
+        """Get the most important stats for this player type."""
+        pass
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert player to dictionary for persistence."""
+        return {
+            "name": self.name,
+            "team": self.team,
+            "position": self.position,
+            "games_played": self.games_played,
+            "player_type": self.__class__.__name__
+        }
+
+    def summary_row(self) -> Dict[str, object]:
+        """Return a summary of player data for reports."""
+        return {
+            "name": self.name,
+            "team": self.team,
+            "position": self.position,
+            "efficiency_score": round(self.efficiency_score(), 3),
+            "games_played": self.games_played
+        }
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.position}) - {self.team}"
+
+
+class OffensivePlayer(Player):
+    """Represents offensive players."""
+    
+    def __init__(self, name: str, team: Optional[str], position: Optional[str],
+                 passing_yards: int = 0, rushing_yards: int = 0, 
+                 receiving_yards: int = 0, touchdowns: int = 0, games_played: int = 0):
+        super().__init__(name, team, position)
+        self.passing_yards = passing_yards
+        self.rushing_yards = rushing_yards
+        self.receiving_yards = receiving_yards
+        self.touchdowns = touchdowns
+        self.games_played = games_played
+
+    def efficiency_score(self) -> float:
+        """Calculate offensive efficiency."""
+        if self.games_played == 0:
+            return 0.0
+        yards_score = (
+            self.passing_yards * 0.10 +
+            self.rushing_yards * 0.20 +
+            self.receiving_yards * 0.20
+        )
+        td_score = self.touchdowns * 6
+        return (yards_score + td_score) / max(self.games_played, 1)
+
+    def get_primary_stats(self) -> Dict[str, Any]:
+        """Return offensive statistics."""
+        return {
+            "total_yards": self.passing_yards + self.rushing_yards + self.receiving_yards,
+            "touchdowns": self.touchdowns,
+            "yards_per_game": (self.passing_yards + self.rushing_yards + self.receiving_yards) / max(self.games_played, 1)
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary including offensive stats."""
+        d = super().to_dict()
+        d.update({
+            "passing_yards": self.passing_yards,
+            "rushing_yards": self.rushing_yards,
+            "receiving_yards": self.receiving_yards,
+            "touchdowns": self.touchdowns
+        })
+        return d
+
+
+class DefensivePlayer(Player):
+    """Represents defensive players."""
+    
+    def __init__(self, name: str, team: Optional[str], position: Optional[str],
+                 tackles: int = 0, sacks: int = 0, interceptions: int = 0, 
+                 forced_fumbles: int = 0, games_played: int = 0):
+        super().__init__(name, team, position)
+        self.tackles = tackles
+        self.sacks = sacks
+        self.interceptions = interceptions
+        self.forced_fumbles = forced_fumbles
+        self.games_played = games_played
+
+    def efficiency_score(self) -> float:
+        """Calculate defensive efficiency."""
+        if self.games_played == 0:
+            return 0.0
+        impact_score = (
+            self.tackles * 0.5 +
+            self.sacks * 3 +
+            self.interceptions * 4 +
+            self.forced_fumbles * 3.5
+        )
+        return impact_score / max(self.games_played, 1)
+
+    def get_primary_stats(self) -> Dict[str, Any]:
+        """Return defensive statistics."""
+        return {
+            "total_tackles": self.tackles,
+            "big_plays": self.sacks + self.interceptions + self.forced_fumbles,
+            "tackles_per_game": self.tackles / max(self.games_played, 1)
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary including defensive stats."""
+        d = super().to_dict()
+        d.update({
+            "tackles": self.tackles,
+            "sacks": self.sacks,
+            "interceptions": self.interceptions,
+            "forced_fumbles": self.forced_fumbles
+        })
+        return d
+
+
+class SpecialTeamsPlayer(Player):
+    """Represents special teams players."""
+    
+    def __init__(self, name: str, team: Optional[str], position: Optional[str],
+                 field_goals_made: int = 0, field_goals_attempted: int = 0,
+                 punts_inside_20: int = 0, return_tds: int = 0, games_played: int = 0):
+        super().__init__(name, team, position)
+        self.field_goals_made = field_goals_made
+        self.field_goals_attempted = field_goals_attempted
+        self.punts_inside_20 = punts_inside_20
+        self.return_tds = return_tds
+        self.games_played = games_played
+
+    def efficiency_score(self) -> float:
+        """Calculate special teams efficiency."""
+        if self.games_played == 0:
+            return 0.0
+        accuracy_bonus = 0
+        if self.field_goals_attempted > 0:
+            fg_percentage = self.field_goals_made / self.field_goals_attempted
+            accuracy_bonus = fg_percentage * 5
+        special_score = (
+            self.field_goals_made * 2 +
+            self.punts_inside_20 * 1.5 +
+            self.return_tds * 6 +
+            accuracy_bonus
+        )
+        return special_score / max(self.games_played, 1)
+
+    def get_primary_stats(self) -> Dict[str, Any]:
+        """Return special teams statistics."""
+        fg_percentage = (self.field_goals_made / max(self.field_goals_attempted, 1)) * 100
+        return {
+            "field_goals_made": self.field_goals_made,
+            "fg_percentage": round(fg_percentage, 1),
+            "return_tds": self.return_tds,
+            "punts_inside_20": self.punts_inside_20
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary including special teams stats."""
+        d = super().to_dict()
+        d.update({
+            "field_goals_made": self.field_goals_made,
+            "field_goals_attempted": self.field_goals_attempted,
+            "punts_inside_20": self.punts_inside_20,
+            "return_tds": self.return_tds
+        })
+        return d
