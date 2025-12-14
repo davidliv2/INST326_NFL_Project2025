@@ -331,3 +331,122 @@ class Team:
 # ============================================================================
 # DATA PERSISTENCE MODULE (NEW FOR PROJECT 4)
 # ============================================================================
+
+class PersistanceManager: 
+    """Handles saving and loading system state."""
+
+    @staticmethod
+    def save_teams_json(teams: List[Team], filepath: Path) -> None:
+        """Save teams to JSON fuke with error handling"""
+        try: 
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "teams": [team.to_dict() for team in teams],
+                "count": len(teams)
+            }
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            print(f" Saved {len(teams)} teams to {filepath}")
+        except IOError as e:
+            raise IOError(f"Failed to save teams: {e}")
+
+    @staticmethod
+    def load_teams_json(filepath: Path) -> List[Team]:
+        """Load teams from JSON file with error handling."""
+        try:
+            if not filepath.exists():
+                raise FileNotFoundError(f"File not found: {filepath}")
+            
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            teams = []
+            for team_data in data.get("teams", []):
+                team = Team(team_data["name"], team_data["abbreviation"])
+                team.season_stats = SeasonStats.from_dict(team_data["season_stats"])
+                
+                # Recreate players based on type
+                for player_data in team_data.get("roster", []):
+                    player = PersistenceManager._create_player_from_dict(player_data)
+                    team.add_player(player)
+                
+                teams.append(team)
+            
+            print(f" Loaded {len(teams)} teams from {filepath}")
+            return teams
+            
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON format: {e}")
+        except IOError as e:
+            raise IOError(f"Failed to load teams: {e}")
+
+    @staticmethod
+    def _create_player_from_dict(data: Dict[str, Any]) -> Player:
+        """Factory method to create player from dictionary."""
+        player_type = data.get("player_type", "OffensivePlayer")
+        name = data["name"]
+        team = data.get("team")
+        position = data.get("position")
+        games = data.get("games_played", 0)
+        
+        if player_type == "OffensivePlayer":
+            return OffensivePlayer(
+                name, team, position,
+                passing_yards=data.get("passing_yards", 0),
+                rushing_yards=data.get("rushing_yards", 0),
+                receiving_yards=data.get("receiving_yards", 0),
+                touchdowns=data.get("touchdowns", 0),
+                games_played=games
+            )
+        elif player_type == "DefensivePlayer":
+            return DefensivePlayer(
+                name, team, position,
+                tackles=data.get("tackles", 0),
+                sacks=data.get("sacks", 0),
+                interceptions=data.get("interceptions", 0),
+                forced_fumbles=data.get("forced_fumbles", 0),
+                games_played=games
+            )
+        elif player_type == "SpecialTeamsPlayer":
+            return SpecialTeamsPlayer(
+                name, team, position,
+                field_goals_made=data.get("field_goals_made", 0),
+                field_goals_attempted=data.get("field_goals_attempted", 0),
+                punts_inside_20=data.get("punts_inside_20", 0),
+                return_tds=data.get("return_tds", 0),
+                games_played=games
+            )
+        else:
+            # Fallback to offensive player
+            return OffensivePlayer(name, team, position, games_played=games)
+
+    @staticmethod
+    def export_leaderboard_csv(df: pd.DataFrame, filepath: Path) -> None:
+        """Export leaderboard to CSV."""
+        try:
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(filepath, index=False)
+            print(f" Exported leaderboard to {filepath}")
+        except IOError as e:
+            raise IOError(f"Failed to export CSV: {e}")
+
+    @staticmethod
+    def import_players_csv(filepath: Path) -> pd.DataFrame:
+        """Import player data from CSV."""
+        try:
+            if not filepath.exists():
+                raise FileNotFoundError(f"CSV file not found: {filepath}")
+            
+            df = pd.read_csv(filepath)
+            required_cols = ["player", "team", "position"]
+            missing = [col for col in required_cols if col not in df.columns]
+            if missing:
+                raise ValueError(f"CSV missing required columns: {missing}")
+            
+            print(f" Imported {len(df)} players from {filepath}")
+            return df
+            
+        except pd.errors.EmptyDataError:
+            raise ValueError("CSV file is empty")
+        except IOError as e:
+            raise IOError(f"Failed to import CSV: {e}")
