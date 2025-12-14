@@ -49,7 +49,7 @@ Our NFL Analytics System is a complete, professional-grade application that demo
 ##  Repository Structure
 
 ```
-nfl-analytics-capstone/
+INST326_NFL_Project2025/
 │
 ├── nfl_analytics_capstone.py          # Main system implementation
 ├── test_nfl_analytics_capstone.py     # Comprehensive test suite
@@ -59,14 +59,6 @@ nfl-analytics-capstone/
 ├── docs/
 │   ├── Architecture_Document.md      # Technical design decisions
 │   ├── Testing_Strategy.md           # Testing approach and coverage
-│
-├── nfl_data/                         # Generated data directory
-│   ├── buf_team.json                 # Team save files
-│   ├── lar_team.json
-│   └── reports/                      # Generated reports
-│       ├── league_report.json
-│       ├── weekly_rankings_team_rankings.csv
-│       └── weekly_rankings_player_rankings.csv
 │
 └── presentation/
     └── capstone_demo.mp4             # Project demonstration video
