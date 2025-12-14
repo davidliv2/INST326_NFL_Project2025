@@ -212,3 +212,118 @@ class SpecialTeamsPlayer(Player):
             "return_tds": self.return_tds
         })
         return d
+
+# ============================================================================
+# TEAM & SEASON STATS (Composition)
+# ============================================================================
+
+class SeasonStats:
+    """Track team-level season statistics."""
+    
+    def __init__(self):
+        self.wins = 0
+        self.losses = 0
+        self.ties = 0
+        self.points_scored = 0
+        self.points_allowed = 0
+
+    def add_game_result(self, points_for: int, points_against: int) -> None:
+        """Record the result of a game."""
+        self.points_scored += points_for
+        self.points_allowed += points_against
+        
+        if points_for > points_against:
+            self.wins += 1
+        elif points_for < points_against:
+            self.losses += 1
+        else:
+            self.ties += 1
+
+    def win_percentage(self) -> float:
+        """Calculate win percentage."""
+        total_games = self.wins + self.losses + self.ties
+        if total_games == 0:
+            return 0.0
+        return (self.wins + 0.5 * self.ties) / total_games
+
+    def point_differential(self) -> int:
+        """Calculate point differential."""
+        return self.points_scored - self.points_allowed
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for persistence."""
+        return {
+            "wins": self.wins,
+            "losses": self.losses,
+            "ties": self.ties,
+            "points_scored": self.points_scored,
+            "points_allowed": self.points_allowed
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SeasonStats':
+        """Create from dictionary."""
+        stats = cls()
+        stats.wins = data.get("wins", 0)
+        stats.losses = data.get("losses", 0)
+        stats.ties = data.get("ties", 0)
+        stats.points_scored = data.get("points_scored", 0)
+        stats.points_allowed = data.get("points_allowed", 0)
+        return stats
+
+    def __str__(self) -> str:
+        return f"Record: {self.wins}-{self.losses}-{self.ties} (Win%: {self.win_percentage():.3f})"
+
+
+class Team:
+    """Team with composition - HAS players and stats."""
+    
+    def __init__(self, name: str, abbreviation: str):
+        abbr = abbreviation.upper()
+        if abbr not in VALID_TEAMS:
+            raise ValueError(f"Invalid team abbreviation: {abbr}")
+        
+        self.name = name
+        self.abbreviation = abbr
+        self.roster: List[Player] = []
+        self.season_stats = SeasonStats()
+
+    def add_player(self, player: Player) -> None:
+        """Add a player to the team roster."""
+        player.team = self.abbreviation
+        if player not in self.roster:
+            self.roster.append(player)
+
+    def remove_player(self, player_name: str) -> bool:
+        """Remove a player from the roster by name."""
+        for i, player in enumerate(self.roster):
+            if player.name.lower() == player_name.lower():
+                del self.roster[i]
+                return True
+        return False
+
+    def get_players_by_position(self, position: str) -> List[Player]:
+        """Get all players at a specific position."""
+        return [p for p in self.roster if p.position == position.upper()]
+
+    def average_efficiency(self) -> float:
+        """Calculate team's average player efficiency."""
+        if not self.roster:
+            return 0.0
+        total_efficiency = sum(player.efficiency_score() for player in self.roster)
+        return total_efficiency / len(self.roster)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert team to dictionary for persistence."""
+        return {
+            "name": self.name,
+            "abbreviation": self.abbreviation,
+            "roster": [p.to_dict() for p in self.roster],
+            "season_stats": self.season_stats.to_dict()
+        }
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.abbreviation}) - {len(self.roster)} players"
+
+    def __len__(self) -> int:
+        return len(self.roster)
