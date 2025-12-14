@@ -1,1 +1,10 @@
+"""
+NFL Analytics System - Project 4: Capstone Integration & Testing
+INST326 Advanced OOP with Data Persistence
+
+Team: Gridiron Data Systems (David, Dash, Andrew)
+
+Complete system integrating Projects 1-3 with data persistence,
+I/O capabilities and comprehensive testing.
+"""
 
