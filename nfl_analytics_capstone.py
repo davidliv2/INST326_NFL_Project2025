@@ -12,9 +12,6 @@ NFL Analytics System - Project 4 Capstone
 INST326 Complete Information Science Application
 
 Team: Gridiron Data Systems (David, Dash, Andrew)
-
-This system extends Project 3 with data persistence, complete workflows,
-and comprehensive testing for a professional NFL analytics application.
 """
 
 from __future__ import annotations
